@@ -67,10 +67,16 @@ export interface FastStats {
   goalsHit: number; // completed fasts whose elapsed >= goal
 }
 
-/** Input accepted when starting a fast. */
+/**
+ * Input accepted when creating a fast.
+ * - Live fast: send `goal_hours` (the target window length); `end_at` omitted.
+ * - Logged fast: send `end_at` (an already-finished fast); `goal_hours` is
+ *   derived from the start→end window.
+ */
 export interface StartFastInput {
-  goal_hours: number;
+  goal_hours?: number;
   start_at?: string; // defaults to now
+  end_at?: string; // present → logging a completed fast
   note?: string;
 }
 

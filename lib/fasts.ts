@@ -1,5 +1,5 @@
 import { db } from './db';
-import { nowISO } from './dates';
+import { hoursBetween, nowISO } from './dates';
 import type { Fast, StartFastInput, UpdateFastInput } from './types';
 
 /**
@@ -36,7 +36,7 @@ const stmtList = db.prepare<[]>(
 const stmtGet = db.prepare<[number]>(`SELECT * FROM fasts WHERE id = ?`);
 const stmtInsert = db.prepare(
   `INSERT INTO fasts (start_at, end_at, goal_hours, note, created_at)
-   VALUES (@start_at, NULL, @goal_hours, @note, @created_at)`
+   VALUES (@start_at, @end_at, @goal_hours, @note, @created_at)`
 );
 const stmtUpdate = db.prepare(
   `UPDATE fasts SET start_at = @start_at, end_at = @end_at,
@@ -61,15 +61,24 @@ export function getFast(id: number): Fast | undefined {
 }
 
 /**
- * Start a new fast (end_at = NULL). Throws {@link ActiveFastError} if one is
- * already in progress.
+ * Create a fast. With `end_at` omitted it's a live (in-progress) fast and
+ * {@link ActiveFastError} is thrown if one is already running. With `end_at`
+ * set it's a logged, already-completed fast whose goal is its window length.
  */
-export function startFast(input: StartFastInput): Fast {
-  if (getActiveFast()) throw new ActiveFastError();
+export function createFast(input: StartFastInput): Fast {
+  const start_at = input.start_at ?? nowISO();
+  const end_at = input.end_at ?? null;
+  const goal_hours =
+    input.goal_hours ??
+    (end_at !== null ? hoursBetween(start_at, end_at) : 0);
+
+  // The single-active-fast rule only applies to in-progress fasts.
+  if (end_at === null && getActiveFast()) throw new ActiveFastError();
   try {
     const info = stmtInsert.run({
-      start_at: input.start_at ?? nowISO(),
-      goal_hours: input.goal_hours,
+      start_at,
+      end_at,
+      goal_hours,
       note: input.note ?? '',
       created_at: nowISO(),
     });

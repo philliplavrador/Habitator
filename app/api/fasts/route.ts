@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ActiveFastError, getActiveFast, listFasts, startFast } from '@/lib/fasts';
+import { ActiveFastError, createFast, getActiveFast, listFasts } from '@/lib/fasts';
 import { computeFastStats } from '@/lib/fastStats';
 import { parseStartFastInput } from '@/lib/validate';
 
@@ -16,8 +16,10 @@ export async function GET() {
   });
 }
 
-// POST /api/fasts  body { goal_hours, start_at?, note? } → start a fast.
-// 409 if a fast is already in progress.
+// POST /api/fasts
+//   body { start_at?, goal_hours }          → start a live fast (409 if one is
+//                                             already in progress)
+//   body { start_at, end_at }               → log an already-completed fast
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
@@ -32,7 +34,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const fast = startFast(parsed.value);
+    const fast = createFast(parsed.value);
     return NextResponse.json({ fast }, { status: 201 });
   } catch (err) {
     if (err instanceof ActiveFastError) {

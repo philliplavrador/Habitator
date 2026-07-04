@@ -1,4 +1,10 @@
-import { isValidISODate, isValidTimestamp, nowISO, todayISO } from './dates';
+import {
+  hoursBetween,
+  isValidISODate,
+  isValidTimestamp,
+  nowISO,
+  todayISO,
+} from './dates';
 import type { HabitInput, StartFastInput, UpdateFastInput } from './types';
 
 // Sane bounds for a fasting goal, in hours. Rejects fat-finger inputs while
@@ -52,25 +58,20 @@ function parseGoalHours(v: unknown): number | null {
   return n;
 }
 
+const windowError = `A fast must be between ${MIN_GOAL_HOURS} and ${MAX_GOAL_HOURS} hours long.`;
+
 /**
- * Validate/normalize the payload to START a fast.
- * - goal_hours required, finite, within [1, 168]
- * - start_at defaults to now; must be a valid timestamp
- * - note defaults to ''
+ * Validate/normalize the payload to CREATE a fast. Two shapes:
+ * - Live fast: `goal_hours` (target window length) required; `end_at` omitted.
+ * - Logged fast: `end_at` present (an already-finished fast); the goal is
+ *   derived from the start→end window.
+ * `start_at` defaults to now; `note` defaults to ''.
  */
 export function parseStartFastInput(body: unknown): ParseResult<StartFastInput> {
   if (typeof body !== 'object' || body === null) {
     return { ok: false, error: 'Expected a JSON object.' };
   }
   const b = body as Record<string, unknown>;
-
-  const goal_hours = parseGoalHours(b.goal_hours);
-  if (goal_hours === null) {
-    return {
-      ok: false,
-      error: `goal_hours must be a number between ${MIN_GOAL_HOURS} and ${MAX_GOAL_HOURS}.`,
-    };
-  }
 
   const rawStart = asString(b.start_at).trim();
   const start_at = rawStart === '' ? nowISO() : rawStart;
@@ -83,7 +84,31 @@ export function parseStartFastInput(body: unknown): ParseResult<StartFastInput> 
     return { ok: false, error: 'Note is too long.' };
   }
 
-  return { ok: true, value: { goal_hours, start_at, note } };
+  // A concrete end_at means we're logging a completed fast; the goal is the
+  // length of the recorded window.
+  const hasEnd =
+    b.end_at !== null && b.end_at !== undefined && asString(b.end_at).trim() !== '';
+  if (hasEnd) {
+    const end_at = asString(b.end_at).trim();
+    if (!isValidTimestamp(end_at)) {
+      return { ok: false, error: 'end_at must be a valid timestamp.' };
+    }
+    const duration = hoursBetween(start_at, end_at);
+    if (duration <= 0) {
+      return { ok: false, error: 'The end must be after the start.' };
+    }
+    if (duration < MIN_GOAL_HOURS || duration > MAX_GOAL_HOURS) {
+      return { ok: false, error: windowError };
+    }
+    return { ok: true, value: { start_at, end_at, goal_hours: duration, note } };
+  }
+
+  // No end_at → a live fast; require a valid target window length.
+  const goal_hours = parseGoalHours(b.goal_hours);
+  if (goal_hours === null) {
+    return { ok: false, error: windowError };
+  }
+  return { ok: true, value: { start_at, goal_hours, note } };
 }
 
 /**

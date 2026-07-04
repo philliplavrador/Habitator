@@ -9,6 +9,7 @@ import {
   formatDuration,
   formatElapsed,
   nowISO,
+  toLocalInputValue,
 } from '@/lib/dates';
 import type { Fast } from '@/lib/types';
 
@@ -16,11 +17,14 @@ interface Props {
   active: Fast | null;
 }
 
-const GOAL_PRESETS = [13, 16, 18, 20, 24];
+const HOUR_MS = 3_600_000;
+const DEFAULT_WINDOW_H = 16;
+const MIN_HOURS = 1;
+const MAX_HOURS = 168;
 
 export default function FastClient({ active }: Props) {
   if (active) return <ActiveFast fast={active} />;
-  return <StartFast />;
+  return <StartOrLog />;
 }
 
 // ── In-progress view: ring + live timer ─────────────────────────────
@@ -47,6 +51,7 @@ function ActiveFast({ fast }: { fast: Fast }) {
   const reached = elapsedSec >= goalSec;
   const progress = goalSec > 0 ? elapsedSec / goalSec : 0;
   const overageSec = elapsedSec - goalSec;
+  const targetEndISO = new Date(startMs + fast.goal_hours * HOUR_MS).toISOString();
 
   async function handleStop() {
     setBusy(true);
@@ -80,9 +85,10 @@ function ActiveFast({ fast }: { fast: Fast }) {
         )}
       </ProgressRing>
 
-      <p className="text-sm text-text-muted" suppressHydrationWarning>
-        Started {formatDateTime(fast.start_at)}
-      </p>
+      <div className="text-center text-sm text-text-muted" suppressHydrationWarning>
+        <p>Started {formatDateTime(fast.start_at)}</p>
+        <p>Target {formatDateTime(targetEndISO)}</p>
+      </div>
 
       {error && (
         <p className="w-full rounded-btn bg-fail/15 px-3 py-2 text-center text-sm text-fail">
@@ -102,98 +108,157 @@ function ActiveFast({ fast }: { fast: Fast }) {
   );
 }
 
-// ── Idle view: pick a goal and start ────────────────────────────────
+// ── Idle view: start a live fast, or log a completed one ────────────
 
-function StartFast() {
+type Mode = 'start' | 'log';
+
+const fieldClass =
+  'w-full rounded-btn border border-border bg-surface px-3 py-2.5 text-text-primary outline-none focus:border-accent';
+
+function StartOrLog() {
   const router = useRouter();
-  const [goal, setGoal] = useState<number>(16);
-  const [custom, setCustom] = useState('');
+  const [mode, setMode] = useState<Mode>('start');
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // A non-empty custom value overrides the preset selection.
-  const customNum = custom.trim() === '' ? null : Number(custom);
-  const effectiveGoal =
-    customNum !== null && Number.isFinite(customNum) ? customNum : goal;
+  // Seed sensible defaults on the client only — computing "now" during SSR
+  // would bake in the server timezone/clock and cause a hydration mismatch.
+  // Start mode: now → now + 16h target. Log mode: 16h ago → now.
+  useEffect(() => {
+    const now = Date.now();
+    if (mode === 'start') {
+      setStart(toLocalInputValue(new Date(now).toISOString()));
+      setEnd(toLocalInputValue(new Date(now + DEFAULT_WINDOW_H * HOUR_MS).toISOString()));
+    } else {
+      setStart(toLocalInputValue(new Date(now - DEFAULT_WINDOW_H * HOUR_MS).toISOString()));
+      setEnd(toLocalInputValue(new Date(now).toISOString()));
+    }
+    setError(null);
+  }, [mode]);
 
-  async function handleStart() {
-    if (!Number.isFinite(effectiveGoal) || effectiveGoal <= 0) {
-      setError('Enter a valid goal in hours.');
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  const durationH =
+    Number.isFinite(startMs) && Number.isFinite(endMs)
+      ? (endMs - startMs) / HOUR_MS
+      : NaN;
+  const durationOk =
+    Number.isFinite(durationH) && durationH >= MIN_HOURS && durationH <= MAX_HOURS;
+
+  async function handleSubmit() {
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+      setError('Enter valid start and end times.');
+      return;
+    }
+    if (endMs <= startMs) {
+      setError(
+        mode === 'start'
+          ? 'The target end must be after the start.'
+          : 'The end must be after the start.'
+      );
+      return;
+    }
+    if (!durationOk) {
+      setError(`A fast must be between ${MIN_HOURS} and ${MAX_HOURS} hours long.`);
       return;
     }
     setBusy(true);
     setError(null);
+    const startISO = new Date(startMs).toISOString();
+    const endISO = new Date(endMs).toISOString();
     try {
-      await apiStartFast({ goal_hours: effectiveGoal });
+      if (mode === 'start') {
+        // Live fast: send the derived window as the goal; no end_at yet.
+        await apiStartFast({ start_at: startISO, goal_hours: durationH });
+      } else {
+        // Logged fast: send both times; the server derives the goal.
+        await apiStartFast({ start_at: startISO, end_at: endISO });
+      }
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start the fast.');
+      setError(e instanceof Error ? e.message : 'Could not save the fast.');
       setBusy(false);
     }
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="rounded-card border border-border bg-surface p-5 text-center">
-        <p className="text-text-secondary">No fast in progress.</p>
-        <p className="mt-1 text-sm text-text-muted">
-          Pick a goal and start when you begin.
-        </p>
+      {/* Mode toggle */}
+      <div className="flex gap-1 rounded-btn border border-border bg-surface p-1">
+        {(['start', 'log'] as Mode[]).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={`flex-1 rounded-btn px-3 py-2 text-center text-sm font-semibold transition-colors ${
+              mode === m
+                ? 'bg-accent text-white'
+                : 'text-text-secondary active:bg-surface2'
+            }`}
+          >
+            {m === 'start' ? 'Start a fast' : 'Log a past fast'}
+          </button>
+        ))}
       </div>
 
       <div>
-        <p className="mb-2 text-sm font-medium text-text-secondary">Goal</p>
-        <div className="grid grid-cols-5 gap-2">
-          {GOAL_PRESETS.map((h) => {
-            const selected = customNum === null && goal === h;
-            return (
-              <button
-                key={h}
-                type="button"
-                onClick={() => {
-                  setGoal(h);
-                  setCustom('');
-                }}
-                className={`rounded-btn border px-2 py-2.5 text-sm font-semibold transition-colors ${
-                  selected
-                    ? 'border-accent bg-accent text-white'
-                    : 'border-border bg-surface text-text-secondary active:bg-surface2'
-                }`}
-              >
-                {h}h
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div>
-        <label htmlFor="custom-goal" className="mb-1.5 block text-sm font-medium text-text-secondary">
-          Custom goal (hours)
+        <label htmlFor="fast-start" className="mb-1.5 block text-sm font-medium text-text-secondary">
+          Start
         </label>
         <input
-          id="custom-goal"
-          type="number"
-          inputMode="decimal"
-          min={1}
-          max={168}
-          step="0.5"
-          value={custom}
-          onChange={(e) => setCustom(e.target.value)}
-          placeholder="e.g. 36"
-          className="w-full rounded-btn border border-border bg-surface px-3 py-2.5 text-text-primary placeholder:text-text-muted outline-none focus:border-accent"
+          id="fast-start"
+          type="datetime-local"
+          className={fieldClass}
+          value={start}
+          onChange={(e) => setStart(e.target.value)}
         />
       </div>
+
+      <div>
+        <label htmlFor="fast-end" className="mb-1.5 block text-sm font-medium text-text-secondary">
+          {mode === 'start' ? 'Target end' : 'End'}
+        </label>
+        <input
+          id="fast-end"
+          type="datetime-local"
+          className={fieldClass}
+          value={end}
+          onChange={(e) => setEnd(e.target.value)}
+        />
+      </div>
+
+      <p className="text-center text-sm text-text-muted">
+        {durationOk ? (
+          <>
+            {mode === 'start' ? 'Planned window' : 'Duration'}:{' '}
+            <span className="font-semibold text-text-primary">
+              {formatDuration(durationH)}
+            </span>
+          </>
+        ) : (
+          <span className="text-text-muted">
+            Pick a window of {MIN_HOURS}–{MAX_HOURS} hours.
+          </span>
+        )}
+      </p>
 
       {error && <p className="text-sm text-fail">{error}</p>}
 
       <button
         type="button"
-        onClick={handleStart}
-        disabled={busy}
+        onClick={handleSubmit}
+        disabled={busy || !durationOk}
         className="rounded-btn bg-accent px-4 py-3.5 text-center text-base font-semibold text-white active:bg-accent-soft disabled:opacity-50"
       >
-        {busy ? 'Starting…' : `Start ${formatDuration(effectiveGoal)} fast`}
+        {busy
+          ? mode === 'start'
+            ? 'Starting…'
+            : 'Saving…'
+          : mode === 'start'
+          ? 'Start fast'
+          : 'Save fast'}
       </button>
     </div>
   );

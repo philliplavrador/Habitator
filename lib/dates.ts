@@ -128,6 +128,17 @@ export function formatElapsed(totalSeconds: number): string {
   return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
 }
 
+/**
+ * Convert an ISO instant to the value shape a `<input type="datetime-local">`
+ * expects: local wall-clock `YYYY-MM-DDTHH:mm` (minute precision). Client-only.
+ */
+export function toLocalInputValue(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
+    d.getDate()
+  )}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 /** Human label for an instant, e.g. "Jul 4, 2:15 PM" (local time). */
 export function formatDateTime(iso: string): string {
   const d = new Date(iso);

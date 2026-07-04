@@ -4,7 +4,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import StatCard from './StatCard';
 import { apiDeleteFast, apiUpdateFast } from '@/lib/client';
-import { formatDateTime, formatDuration, hoursBetween } from '@/lib/dates';
+import {
+  formatDateTime,
+  formatDuration,
+  hoursBetween,
+  toLocalInputValue,
+} from '@/lib/dates';
 import type { Fast, FastStats } from '@/lib/types';
 
 interface Props {
@@ -53,15 +58,6 @@ export default function FastHistory({ fasts, stats }: Props) {
   );
 }
 
-// datetime-local uses local wall-clock; convert to/from ISO for storage.
-function toLocalInput(iso: string): string {
-  const d = new Date(iso);
-  const p = (n: number) => (n < 10 ? `0${n}` : String(n));
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(
-    d.getHours()
-  )}:${p(d.getMinutes())}`;
-}
-
 const fieldClass =
   'w-full rounded-btn border border-border bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-accent';
 
@@ -71,8 +67,8 @@ function FastRow({ fast }: { fast: Fast }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [start, setStart] = useState(() => toLocalInput(fast.start_at));
-  const [end, setEnd] = useState(() => toLocalInput(fast.end_at as string));
+  const [start, setStart] = useState(() => toLocalInputValue(fast.start_at));
+  const [end, setEnd] = useState(() => toLocalInputValue(fast.end_at as string));
   const [goal, setGoal] = useState(String(fast.goal_hours));
 
   const hours = hoursBetween(fast.start_at, fast.end_at as string);
