@@ -84,3 +84,60 @@ export function relativeLabel(iso: string): string {
   if (iso === addDays(today, -1)) return 'Yesterday';
   return formatHuman(iso);
 }
+
+// ── Timestamp / duration helpers (for fasting) ──────────────────────
+// Habits are day-granular (YYYY-MM-DD); a fast is a timespan, so it needs
+// full ISO timestamps and duration math. These use the local clock for
+// display and Date parsing for arithmetic.
+
+/** Current instant as a full ISO 8601 timestamp (UTC). */
+export function nowISO(): string {
+  return new Date().toISOString();
+}
+
+/** True if `s` is a string that parses to a real instant. */
+export function isValidTimestamp(s: unknown): s is string {
+  if (typeof s !== 'string' || s.trim() === '') return false;
+  const t = Date.parse(s);
+  return Number.isFinite(t);
+}
+
+/** Fractional hours from `startISO` to `endISO` (negative if inverted). */
+export function hoursBetween(startISO: string, endISO: string): number {
+  return (Date.parse(endISO) - Date.parse(startISO)) / 3_600_000;
+}
+
+/**
+ * Compact duration label from hours, e.g. 16.54 → "16h 32m". Floors to the
+ * whole minute (like a stopwatch) so the label never rounds *up* past a goal —
+ * e.g. 15h 59m 45s reads "15h 59m", staying consistent with the goal-hit check.
+ */
+export function formatDuration(hours: number): string {
+  const totalMinutes = Math.max(0, Math.floor(hours * 60));
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}h ${m}m`;
+}
+
+/** Live-timer label from whole seconds, e.g. 3723 → "01:02:03". */
+export function formatElapsed(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
+}
+
+/** Human label for an instant, e.g. "Jul 4, 2:15 PM" (local time). */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  const mo = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ][d.getMonth()];
+  let h = d.getHours();
+  const ampm = h < 12 ? 'AM' : 'PM';
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${mo} ${d.getDate()}, ${h}:${pad2(d.getMinutes())} ${ampm}`;
+}

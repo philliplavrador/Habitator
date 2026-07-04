@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import NavTabs from '@/components/NavTabs';
 import DateNav from '@/components/DateNav';
 import TodayClient from '@/components/TodayClient';
 import Footer from '@/components/Footer';
@@ -47,6 +48,7 @@ export default function TodayPage({
         <h1 className="mb-4 text-center text-lg font-bold tracking-tight text-text-primary">
           Habitator
         </h1>
+        <NavTabs />
         <DateNav date={selected} prevDate={prevDate} nextDate={nextDate} />
       </header>
 

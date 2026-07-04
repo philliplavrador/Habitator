@@ -1,6 +1,13 @@
 // Browser-side fetch helpers used by client components. Pure fetch — no server
 // imports — so this is safe to bundle into the client.
-import type { EntryStatus, Habit, HabitInput } from './types';
+import type {
+  EntryStatus,
+  Fast,
+  Habit,
+  HabitInput,
+  StartFastInput,
+  UpdateFastInput,
+} from './types';
 
 async function asError(res: Response): Promise<never> {
   let message = `Request failed (${res.status}).`;
@@ -70,5 +77,39 @@ export async function apiDeleteHabit(id: number): Promise<void> {
 
 export async function apiLogout(): Promise<void> {
   const res = await fetch('/api/logout', { method: 'POST' });
+  if (!res.ok) await asError(res);
+}
+
+// ── Fasting ─────────────────────────────────────────────────────────
+
+export async function apiStartFast(input: StartFastInput): Promise<Fast> {
+  const res = await fetch('/api/fasts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) await asError(res);
+  return (await res.json()).fast as Fast;
+}
+
+export async function apiEndFast(id: number, endAt: string): Promise<Fast> {
+  return apiUpdateFast(id, { end_at: endAt });
+}
+
+export async function apiUpdateFast(
+  id: number,
+  input: UpdateFastInput
+): Promise<Fast> {
+  const res = await fetch(`/api/fasts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) await asError(res);
+  return (await res.json()).fast as Fast;
+}
+
+export async function apiDeleteFast(id: number): Promise<void> {
+  const res = await fetch(`/api/fasts/${id}`, { method: 'DELETE' });
   if (!res.ok) await asError(res);
 }

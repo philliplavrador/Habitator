@@ -36,6 +36,23 @@ CREATE TABLE IF NOT EXISTS entries (
 
 CREATE INDEX IF NOT EXISTS idx_entries_habit_date ON entries (habit_id, date);
 CREATE INDEX IF NOT EXISTS idx_entries_date ON entries (date);
+
+CREATE TABLE IF NOT EXISTS fasts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  start_at   TEXT    NOT NULL,            -- ISO timestamp
+  end_at     TEXT,                        -- ISO timestamp; NULL = in progress
+  goal_hours REAL    NOT NULL,            -- target duration in hours
+  note       TEXT    NOT NULL DEFAULT '',
+  created_at TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fasts_start ON fasts (start_at);
+-- Partial unique index: at most one in-progress fast (end_at IS NULL) at a time.
+-- The indexed key is the constant expression (end_at IS NULL) — which is 1 for
+-- every active row — so a second active row collides. Indexing end_at itself
+-- would NOT work: SQLite treats each NULL as distinct, so the constraint would
+-- never fire.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_fast_active ON fasts ((end_at IS NULL)) WHERE end_at IS NULL;
 `;
 
 function resolveDbPath(): string {

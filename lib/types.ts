@@ -45,3 +45,39 @@ export interface HabitInput {
   exceptions: string;
   start_date: string;
 }
+
+// ── Fasting ─────────────────────────────────────────────────────────
+
+export interface Fast {
+  id: number;
+  start_at: string; // ISO timestamp
+  end_at: string | null; // ISO timestamp; null while in progress
+  goal_hours: number; // target duration in hours
+  note: string;
+  created_at: string; // ISO timestamp
+}
+
+export interface FastStats {
+  totalFasts: number; // completed fasts
+  /** Mean length of completed fasts, in hours; null when there are none. */
+  avgHours: number | null;
+  /** Longest completed fast, in hours; null when there are none. */
+  longestHours: number | null;
+  totalHours: number; // summed length of completed fasts
+  goalsHit: number; // completed fasts whose elapsed >= goal
+}
+
+/** Input accepted when starting a fast. */
+export interface StartFastInput {
+  goal_hours: number;
+  start_at?: string; // defaults to now
+  note?: string;
+}
+
+/** Partial input accepted when editing/ending a fast. */
+export interface UpdateFastInput {
+  start_at?: string;
+  end_at?: string | null;
+  goal_hours?: number;
+  note?: string;
+}

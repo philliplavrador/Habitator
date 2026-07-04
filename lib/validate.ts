@@ -1,5 +1,11 @@
-import { isValidISODate, todayISO } from './dates';
-import type { HabitInput } from './types';
+import { isValidISODate, isValidTimestamp, nowISO, todayISO } from './dates';
+import type { HabitInput, StartFastInput, UpdateFastInput } from './types';
+
+// Sane bounds for a fasting goal, in hours. Rejects fat-finger inputs while
+// still allowing extended multi-day fasts (168h = one week).
+const MIN_GOAL_HOURS = 1;
+const MAX_GOAL_HOURS = 168;
+const MAX_NOTE_LEN = 1000;
 
 export type ParseResult<T> =
   | { ok: true; value: T }
@@ -35,4 +41,115 @@ export function parseHabitInput(body: unknown): ParseResult<HabitInput> {
   }
 
   return { ok: true, value: { name, details, exceptions, start_date } };
+}
+
+// ── Fasting ─────────────────────────────────────────────────────────
+
+function parseGoalHours(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n)) return null;
+  if (n < MIN_GOAL_HOURS || n > MAX_GOAL_HOURS) return null;
+  return n;
+}
+
+/**
+ * Validate/normalize the payload to START a fast.
+ * - goal_hours required, finite, within [1, 168]
+ * - start_at defaults to now; must be a valid timestamp
+ * - note defaults to ''
+ */
+export function parseStartFastInput(body: unknown): ParseResult<StartFastInput> {
+  if (typeof body !== 'object' || body === null) {
+    return { ok: false, error: 'Expected a JSON object.' };
+  }
+  const b = body as Record<string, unknown>;
+
+  const goal_hours = parseGoalHours(b.goal_hours);
+  if (goal_hours === null) {
+    return {
+      ok: false,
+      error: `goal_hours must be a number between ${MIN_GOAL_HOURS} and ${MAX_GOAL_HOURS}.`,
+    };
+  }
+
+  const rawStart = asString(b.start_at).trim();
+  const start_at = rawStart === '' ? nowISO() : rawStart;
+  if (!isValidTimestamp(start_at)) {
+    return { ok: false, error: 'start_at must be a valid timestamp.' };
+  }
+
+  const note = asString(b.note).trim();
+  if (note.length > MAX_NOTE_LEN) {
+    return { ok: false, error: 'Note is too long.' };
+  }
+
+  return { ok: true, value: { goal_hours, start_at, note } };
+}
+
+/**
+ * Validate/normalize a partial UPDATE to a fast (end it, or edit fields).
+ * Every field is optional, but at least one must be present. `end_at: null`
+ * explicitly re-opens a fast; omitting it leaves the field unchanged.
+ */
+export function parseUpdateFastInput(body: unknown): ParseResult<UpdateFastInput> {
+  if (typeof body !== 'object' || body === null) {
+    return { ok: false, error: 'Expected a JSON object.' };
+  }
+  const b = body as Record<string, unknown>;
+  const out: UpdateFastInput = {};
+
+  if ('goal_hours' in b) {
+    const goal_hours = parseGoalHours(b.goal_hours);
+    if (goal_hours === null) {
+      return {
+        ok: false,
+        error: `goal_hours must be a number between ${MIN_GOAL_HOURS} and ${MAX_GOAL_HOURS}.`,
+      };
+    }
+    out.goal_hours = goal_hours;
+  }
+
+  if ('start_at' in b) {
+    const start_at = asString(b.start_at).trim();
+    if (!isValidTimestamp(start_at)) {
+      return { ok: false, error: 'start_at must be a valid timestamp.' };
+    }
+    out.start_at = start_at;
+  }
+
+  if ('end_at' in b) {
+    if (b.end_at === null) {
+      out.end_at = null;
+    } else {
+      const end_at = asString(b.end_at).trim();
+      if (!isValidTimestamp(end_at)) {
+        return { ok: false, error: 'end_at must be a valid timestamp or null.' };
+      }
+      out.end_at = end_at;
+    }
+  }
+
+  if ('note' in b) {
+    const note = asString(b.note).trim();
+    if (note.length > MAX_NOTE_LEN) {
+      return { ok: false, error: 'Note is too long.' };
+    }
+    out.note = note;
+  }
+
+  if (Object.keys(out).length === 0) {
+    return { ok: false, error: 'No fields to update.' };
+  }
+
+  // If both endpoints are being set together, reject an inverted span here.
+  // (Cross-field checks against the stored row happen in the route.)
+  if (
+    out.start_at !== undefined &&
+    typeof out.end_at === 'string' &&
+    Date.parse(out.end_at) < Date.parse(out.start_at)
+  ) {
+    return { ok: false, error: 'end_at cannot be before start_at.' };
+  }
+
+  return { ok: true, value: out };
 }
