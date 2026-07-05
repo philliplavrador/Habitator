@@ -10,6 +10,7 @@ const stmtForDate = db.prepare<[string]>(
 const stmtForHabit = db.prepare<[number]>(
   `SELECT * FROM entries WHERE habit_id = ? ORDER BY date ASC`
 );
+const stmtAll = db.prepare<[]>(`SELECT * FROM entries ORDER BY date ASC`);
 const stmtForHabitSince = db.prepare<[number, string]>(
   `SELECT * FROM entries WHERE habit_id = ? AND date >= ? ORDER BY date ASC`
 );
@@ -45,6 +46,11 @@ export function statusMapForDate(date: string): Map<number, EntryStatus> {
 /** Every entry for a habit, ascending by date. */
 export function listEntriesForHabit(habitId: number): Entry[] {
   return stmtForHabit.all(habitId) as Entry[];
+}
+
+/** Every entry across all habits, ascending by date. For cross-habit analytics. */
+export function listAllEntries(): Entry[] {
+  return stmtAll.all() as Entry[];
 }
 
 /** Entries for a habit on/after `sinceDate`, ascending. */

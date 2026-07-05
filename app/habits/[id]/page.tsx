@@ -3,12 +3,24 @@ import { notFound } from 'next/navigation';
 import StatTile from '@/components/ui/StatTile';
 import Heatmap from '@/components/Heatmap';
 import HabitActions from '@/components/HabitActions';
+import ChartCard from '@/components/charts/ChartCard';
+import LineTrend from '@/components/charts/LineTrend';
+import BarBreakdown from '@/components/charts/BarBreakdown';
+import { chart } from '@/components/charts/theme';
 import { getHabit } from '@/lib/habits';
-import { listEntriesForHabit } from '@/lib/entries';
+import { listEntriesForHabit, listEntriesForHabitSince } from '@/lib/entries';
 import { getHabitStats, formatRate } from '@/lib/stats';
+import { rollingCompletionSeries, dayOfWeekBreakdown } from '@/lib/analytics';
 import { formatHuman, todayISO } from '@/lib/dates';
 import { getTimezone } from '@/lib/tz';
 import type { EntryStatus } from '@/lib/types';
+
+function weekdayColor(rate: number | null): string {
+  if (rate === null) return '#2a2f3a';
+  if (rate >= 67) return chart.pass;
+  if (rate >= 34) return chart.warn;
+  return chart.fail;
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,6 +41,17 @@ export default function HabitDetailPage({
 
   const statusByDate: Record<string, EntryStatus> = {};
   for (const e of listEntriesForHabit(id)) statusByDate[e.date] = e.status;
+
+  // Analytics over recorded days on/after the start date.
+  const since = listEntriesForHabitSince(id, habit.start_date);
+  const trend = rollingCompletionSeries(since, 14).map((p) => ({
+    label: p.date.slice(5),
+    rate: p.rate,
+  }));
+  const dow = dayOfWeekBreakdown(since).map((d) => ({
+    ...d,
+    fill: weekdayColor(d.rate),
+  }));
 
   return (
     <main className="py-4">
@@ -104,6 +127,30 @@ export default function HabitDetailPage({
           today={today}
         />
       </section>
+
+      {since.length > 0 && (
+        <section className="mb-6 flex flex-col gap-3">
+          <ChartCard title="Completion trend" subtitle="14-day rolling win rate">
+            <LineTrend
+              data={trend}
+              xKey="label"
+              yKey="rate"
+              unit="%"
+              yDomain={[0, 100]}
+              color={chart.accentTo}
+            />
+          </ChartCard>
+          <ChartCard title="By day of week" subtitle="Win rate per weekday" height="h-44">
+            <BarBreakdown
+              data={dow}
+              xKey="label"
+              yKey="rate"
+              unit="%"
+              fillKey="fill"
+            />
+          </ChartCard>
+        </section>
+      )}
 
       <HabitActions
         id={habit.id}

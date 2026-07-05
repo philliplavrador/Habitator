@@ -1,8 +1,19 @@
 import FastClient from '@/components/FastClient';
 import FastHistory from '@/components/FastHistory';
 import Footer from '@/components/Footer';
+import StatTile from '@/components/ui/StatTile';
+import ChartCard from '@/components/charts/ChartCard';
+import BarBreakdown from '@/components/charts/BarBreakdown';
+import { chart } from '@/components/charts/theme';
 import { getActiveFast, listFasts } from '@/lib/fasts';
 import { computeFastStats } from '@/lib/fastStats';
+import {
+  fastDurationSeries,
+  durationHistogram,
+  startHourDistribution,
+  consecutiveFastingStreak,
+} from '@/lib/analytics';
+import { todayISO } from '@/lib/dates';
 import { getTimezone } from '@/lib/tz';
 
 export const runtime = 'nodejs';
@@ -10,9 +21,18 @@ export const dynamic = 'force-dynamic';
 
 export default function FastsPage() {
   const tz = getTimezone();
+  const today = todayISO(tz);
   const active = getActiveFast() ?? null;
   const fasts = listFasts();
   const stats = computeFastStats(fasts);
+
+  const durations = fastDurationSeries(fasts, tz).map((d) => ({
+    ...d,
+    fill: d.hit ? chart.pass : chart.accent,
+  }));
+  const histogram = durationHistogram(fasts);
+  const startHours = startHourDistribution(fasts, tz);
+  const streak = consecutiveFastingStreak(fasts, tz, today);
 
   return (
     <main className="pb-28 pt-4">
@@ -23,6 +43,36 @@ export default function FastsPage() {
       </header>
 
       <FastClient active={active} tz={tz} />
+
+      {durations.length > 0 && (
+        <section className="mt-8 flex flex-col gap-3">
+          <h2 className="text-base font-bold text-text-primary">Trends</h2>
+          <div className="grid grid-cols-2 gap-2">
+            <StatTile
+              label="Fasting streak"
+              value={String(streak.current)}
+              sub="days in a row"
+              accent="accent"
+            />
+            <StatTile label="Longest streak" value={String(streak.longest)} sub="days" />
+          </div>
+          <ChartCard title="Fast durations" subtitle="Hours per completed fast">
+            <BarBreakdown
+              data={durations}
+              xKey="label"
+              yKey="hours"
+              unit="h"
+              fillKey="fill"
+            />
+          </ChartCard>
+          <ChartCard title="Duration distribution" height="h-44">
+            <BarBreakdown data={histogram} xKey="label" yKey="count" />
+          </ChartCard>
+          <ChartCard title="When you start" subtitle="Fasts started by hour" height="h-44">
+            <BarBreakdown data={startHours} xKey="label" yKey="count" />
+          </ChartCard>
+        </section>
+      )}
 
       <FastHistory fasts={fasts} stats={stats} tz={tz} />
 
