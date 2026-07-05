@@ -53,6 +53,18 @@ CREATE INDEX IF NOT EXISTS idx_fasts_start ON fasts (start_at);
 -- would NOT work: SQLite treats each NULL as distinct, so the constraint would
 -- never fire.
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_fast_active ON fasts ((end_at IS NULL)) WHERE end_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS pushup_sessions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  date       TEXT    NOT NULL,            -- YYYY-MM-DD (local day of the attempt)
+  day_index  INTEGER NOT NULL,            -- program day this attempt targeted (1..97)
+  target     TEXT    NOT NULL,            -- JSON [t1,t2,t3] prescribed reps
+  reps       TEXT    NOT NULL,            -- JSON [r1,r2,r3] actual reps done
+  completed  INTEGER NOT NULL,            -- 1 if reps met target on every set
+  created_at TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pushups_completed ON pushup_sessions (completed);
 `;
 
 function resolveDbPath(): string {

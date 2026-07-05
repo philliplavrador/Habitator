@@ -5,6 +5,7 @@ import type {
   Fast,
   Habit,
   HabitInput,
+  PushupState,
   StartFastInput,
   UpdateFastInput,
 } from './types';
@@ -112,4 +113,16 @@ export async function apiUpdateFast(
 export async function apiDeleteFast(id: number): Promise<void> {
   const res = await fetch(`/api/fasts/${id}`, { method: 'DELETE' });
   if (!res.ok) await asError(res);
+}
+
+// ── Pushups ─────────────────────────────────────────────────────────
+
+export async function apiLogPushups(reps: number[]): Promise<PushupState> {
+  const res = await fetch('/api/pushups', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reps }),
+  });
+  if (!res.ok) await asError(res);
+  return (await res.json()).state as PushupState;
 }

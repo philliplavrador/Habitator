@@ -87,3 +87,31 @@ export interface UpdateFastInput {
   goal_hours?: number;
   note?: string;
 }
+
+// ── Pushup program ──────────────────────────────────────────────────
+
+/** One logged attempt at a program day (may or may not have completed it). */
+export interface PushupSession {
+  id: number;
+  date: string; // YYYY-MM-DD
+  day_index: number; // program day 1..97 this attempt targeted
+  target: number[]; // [t1, t2, t3] prescribed reps
+  reps: number[]; // [r1, r2, r3] actual reps done
+  completed: boolean; // met target on every set
+  created_at: string;
+}
+
+/** The computed state of the program — drives the Today-screen card. */
+export interface PushupState {
+  programDays: number; // 97
+  restSeconds: number; // 90
+  completedCount: number; // sessions completed
+  currentDay: number; // completedCount + 1, capped at programDays
+  target: number[]; // prescription for currentDay
+  daysLeft: number; // programDays - completedCount
+  programComplete: boolean; // completedCount >= programDays
+  /** A completed session dated today, if any — so the card can rest. */
+  doneToday: PushupSession | null;
+  /** The most recent attempt overall — for "fell short" messaging. */
+  lastAttempt: PushupSession | null;
+}

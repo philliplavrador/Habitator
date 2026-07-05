@@ -5,7 +5,7 @@ import type { Entry, Fast, Habit } from '@/lib/types';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// GET /api/export → full JSON backup of habits + entries + fasts.
+// GET /api/export → full JSON backup of habits + entries + fasts + pushups.
 // Surfaced as the "Export data" link in the footer so the owner can always
 // pull a backup regardless of infra.
 export async function GET() {
@@ -18,14 +18,18 @@ export async function GET() {
   const fasts = db
     .prepare('SELECT * FROM fasts ORDER BY start_at ASC, id ASC')
     .all() as Fast[];
+  const pushupSessions = db
+    .prepare('SELECT * FROM pushup_sessions ORDER BY id ASC')
+    .all();
 
   const payload = {
     app: 'habitator',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     habits,
     entries,
     fasts,
+    pushupSessions,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

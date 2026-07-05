@@ -2,10 +2,12 @@ import Link from 'next/link';
 import NavTabs from '@/components/NavTabs';
 import DateNav from '@/components/DateNav';
 import TodayClient from '@/components/TodayClient';
+import PushupCard from '@/components/PushupCard';
 import Footer from '@/components/Footer';
 import { listActiveHabits } from '@/lib/habits';
 import { statusMapForDate } from '@/lib/entries';
 import { getCurrentStreak } from '@/lib/stats';
+import { getPushupState } from '@/lib/pushups';
 import {
   addDays,
   compareISO,
@@ -42,6 +44,11 @@ export default function TodayPage({
   const prevDate = addDays(selected, -1);
   const nextDate = compareISO(selected, today) < 0 ? addDays(selected, 1) : null;
 
+  // The pushup program is a "today" action (it advances by completed session,
+  // not calendar date), so only surface its card on the current day.
+  const isToday = selected === today;
+  const pushupState = isToday ? getPushupState() : null;
+
   return (
     <main className="pb-28 pt-4">
       <header className="mb-5">
@@ -51,6 +58,8 @@ export default function TodayPage({
         <NavTabs />
         <DateNav date={selected} prevDate={prevDate} nextDate={nextDate} />
       </header>
+
+      {pushupState && <PushupCard initialState={pushupState} />}
 
       <TodayClient date={selected} initialItems={items} />
 

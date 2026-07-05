@@ -178,3 +178,30 @@ export function parseUpdateFastInput(body: unknown): ParseResult<UpdateFastInput
 
   return { ok: true, value: out };
 }
+
+// ── Pushups ─────────────────────────────────────────────────────────
+
+const MAX_REPS = 1000; // absurd upper bound to reject fat-finger input
+
+/**
+ * Validate the actual reps logged for a session: exactly 3 non-negative
+ * integers, each within a sane bound.
+ */
+export function parsePushupReps(body: unknown): ParseResult<number[]> {
+  if (typeof body !== 'object' || body === null) {
+    return { ok: false, error: 'Expected a JSON object.' };
+  }
+  const raw = (body as Record<string, unknown>).reps;
+  if (!Array.isArray(raw) || raw.length !== 3) {
+    return { ok: false, error: 'reps must be an array of 3 numbers.' };
+  }
+  const reps: number[] = [];
+  for (const v of raw) {
+    const n = typeof v === 'number' ? v : Number(v);
+    if (!Number.isInteger(n) || n < 0 || n > MAX_REPS) {
+      return { ok: false, error: `Each set's reps must be a whole number 0–${MAX_REPS}.` };
+    }
+    reps.push(n);
+  }
+  return { ok: true, value: reps };
+}
