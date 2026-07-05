@@ -1,6 +1,7 @@
 // Browser-side fetch helpers used by client components. Pure fetch — no server
 // imports — so this is safe to bundle into the client.
 import type {
+  AnkiState,
   EntryStatus,
   Fast,
   Habit,
@@ -144,4 +145,33 @@ export async function apiDeletePushups(id: number): Promise<PushupState> {
   const res = await fetch(`/api/pushups/${id}`, { method: 'DELETE' });
   if (!res.ok) await asError(res);
   return (await res.json()).state as PushupState;
+}
+
+// ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────
+
+/** Upsert one day's new-card count (date defaults to today server-side). */
+export async function apiLogAnki(date: string, newCards: number): Promise<AnkiState> {
+  const res = await fetch('/api/anki', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date, new_cards: newCards }),
+  });
+  if (!res.ok) await asError(res);
+  return (await res.json()).state as AnkiState;
+}
+
+export async function apiUpdateAnkiDay(id: number, newCards: number): Promise<AnkiState> {
+  const res = await fetch(`/api/anki/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_cards: newCards }),
+  });
+  if (!res.ok) await asError(res);
+  return (await res.json()).state as AnkiState;
+}
+
+export async function apiDeleteAnkiDay(id: number): Promise<AnkiState> {
+  const res = await fetch(`/api/anki/${id}`, { method: 'DELETE' });
+  if (!res.ok) await asError(res);
+  return (await res.json()).state as AnkiState;
 }

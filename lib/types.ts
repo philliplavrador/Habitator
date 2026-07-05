@@ -101,6 +101,71 @@ export interface PushupSession {
   created_at: string;
 }
 
+// ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────
+
+/** One day's log: how many new cards were studied on that date. */
+export interface AnkiDay {
+  id: number;
+  date: string; // YYYY-MM-DD (local day)
+  new_cards: number; // new cards studied that day (>= 0)
+  created_at: string; // ISO timestamp
+}
+
+/** Input accepted when logging/upserting a day. */
+export interface AnkiDayInput {
+  date: string; // YYYY-MM-DD
+  new_cards: number;
+}
+
+/**
+ * Full computed state of the deck goal — drives the /japanese screen. All the
+ * derived figures the tracker shows (progress, pace, the two completion ETAs,
+ * days-left, streak) live here so the server computes them once and the client
+ * just renders.
+ */
+export interface AnkiState {
+  // ── Fixed config ──
+  deckName: string;
+  deckTotal: number; // cards in the whole deck (context only)
+  goal: number; // cards to "complete" — the target
+  dailyMin: number; // the pace baseline, new cards/day
+  startDate: string; // YYYY-MM-DD
+  today: string; // YYYY-MM-DD in the owner's tz
+
+  // ── Cards progress ──
+  totalDone: number; // sum of new_cards across all days
+  remaining: number; // max(0, goal - totalDone)
+  cardsPct: number; // totalDone / goal, clamped 0..1
+  goalReached: boolean;
+  goalReachedDate: string | null; // day the cumulative first hit the goal
+
+  // ── Today ──
+  todayCount: number; // new_cards logged today (0 if none)
+  loggedToday: boolean;
+
+  // ── Days-left plan (vs the fixed min-pace schedule) ──
+  totalPlanDays: number; // ceil(goal / dailyMin)
+  daysElapsed: number; // inclusive days from start → today (0 before start)
+  daysLeftPlan: number; // max(0, totalPlanDays - daysElapsed)
+  planPct: number; // daysElapsed / totalPlanDays, clamped 0..1
+
+  // ── Pace (vs dailyMin/day) ──
+  expectedByNow: number; // dailyMin * daysElapsed
+  paceDeltaCards: number; // totalDone - expectedByNow (+ ahead / - behind)
+  paceDeltaDays: number; // round(paceDeltaCards / dailyMin)
+
+  // ── Estimated completion ──
+  baselineFinish: string; // ETA if only ever dailyMin/day from the start (ETA #1)
+  projectedFinish: string | null; // done-so-far + dailyMin/day for future days (ETA #2)
+  projectedDaysToGo: number; // ceil(remaining / dailyMin)
+
+  // ── Streak (consecutive days meeting the daily minimum) ──
+  currentStreak: number;
+  longestStreak: number;
+
+  daysLogged: number; // count of logged days
+}
+
 /** The computed state of the program — drives the Today-screen card. */
 export interface PushupState {
   programDays: number; // 97

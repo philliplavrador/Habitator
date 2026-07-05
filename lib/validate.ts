@@ -5,7 +5,12 @@ import {
   nowISO,
   todayISO,
 } from './dates';
-import type { HabitInput, StartFastInput, UpdateFastInput } from './types';
+import type {
+  AnkiDayInput,
+  HabitInput,
+  StartFastInput,
+  UpdateFastInput,
+} from './types';
 
 // Sane bounds for a fasting goal, in hours. Rejects fat-finger inputs while
 // still allowing extended multi-day fasts (168h = one week).
@@ -204,4 +209,51 @@ export function parsePushupReps(body: unknown): ParseResult<number[]> {
     reps.push(n);
   }
   return { ok: true, value: reps };
+}
+
+// ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────
+
+const MAX_NEW_CARDS = 10000; // absurd upper bound to reject fat-finger input
+
+function parseNewCards(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isInteger(n) || n < 0 || n > MAX_NEW_CARDS) return null;
+  return n;
+}
+
+const newCardsError = `new_cards must be a whole number 0–${MAX_NEW_CARDS}.`;
+
+/**
+ * Validate a day-log payload: a non-negative integer `new_cards` and an
+ * optional `date` (defaults to today in the owner's `tz`). Used by POST /api/anki.
+ */
+export function parseAnkiDayInput(
+  body: unknown,
+  tz: string
+): ParseResult<AnkiDayInput> {
+  if (typeof body !== 'object' || body === null) {
+    return { ok: false, error: 'Expected a JSON object.' };
+  }
+  const b = body as Record<string, unknown>;
+
+  const rawDate = asString(b.date).trim();
+  const date = rawDate === '' ? todayISO(tz) : rawDate;
+  if (!isValidISODate(date)) {
+    return { ok: false, error: 'date must be a valid YYYY-MM-DD date.' };
+  }
+
+  const new_cards = parseNewCards(b.new_cards);
+  if (new_cards === null) return { ok: false, error: newCardsError };
+
+  return { ok: true, value: { date, new_cards } };
+}
+
+/** Validate just the `new_cards` field — for PATCH /api/anki/[id]. */
+export function parseNewCardsField(body: unknown): ParseResult<number> {
+  if (typeof body !== 'object' || body === null) {
+    return { ok: false, error: 'Expected a JSON object.' };
+  }
+  const new_cards = parseNewCards((body as Record<string, unknown>).new_cards);
+  if (new_cards === null) return { ok: false, error: newCardsError };
+  return { ok: true, value: new_cards };
 }

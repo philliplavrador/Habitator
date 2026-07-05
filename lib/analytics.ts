@@ -11,7 +11,7 @@ import {
   toLocalInputValue,
   weekdayOf,
 } from './dates';
-import type { Entry, Fast, Habit, PushupSession } from './types';
+import type { AnkiDay, Entry, Fast, Habit, PushupSession } from './types';
 
 // ── Habits ──────────────────────────────────────────────────────────
 
@@ -307,4 +307,51 @@ export function projectedFinish(
   const remaining = programDays - completedCount;
   const daysToGo = Math.ceil(remaining / perDay);
   return { etaDate: addDays(today, daysToGo), perDay, daysToGo };
+}
+
+// ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────
+
+export interface AnkiCumPoint {
+  date: string;
+  label: string; // MM-DD for the axis
+  done: number; // cumulative new cards done
+  pace: number; // dailyMin * dayNumber — the min-pace reference (capped at goal)
+}
+
+/**
+ * Per-calendar-day cumulative cards vs the min-pace reference line, from the
+ * start date through max(today, last logged day). Days without a log carry the
+ * previous cumulative forward, so the gap between "you" and "pace" reads
+ * correctly even across skipped days. `days` may be in any order.
+ */
+export function ankiCumulativeSeries(
+  days: AnkiDay[],
+  startDate: string,
+  today: string,
+  dailyMin: number,
+  goal: number
+): AnkiCumPoint[] {
+  const byDate = new Map<string, number>();
+  let last = startDate;
+  for (const d of days) {
+    byDate.set(d.date, (byDate.get(d.date) ?? 0) + d.new_cards);
+    if (compareISO(d.date, last) > 0) last = d.date;
+  }
+  const end = compareISO(today, last) > 0 ? today : last;
+  if (compareISO(startDate, end) > 0) return [];
+
+  const out: AnkiCumPoint[] = [];
+  let cum = 0;
+  let dayNumber = 0;
+  for (const date of rangeDates(startDate, end)) {
+    dayNumber++;
+    cum += byDate.get(date) ?? 0;
+    out.push({
+      date,
+      label: date.slice(5),
+      done: cum,
+      pace: Math.min(goal, dailyMin * dayNumber),
+    });
+  }
+  return out;
 }

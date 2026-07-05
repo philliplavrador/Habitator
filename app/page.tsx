@@ -2,11 +2,13 @@ import Link from 'next/link';
 import DateNav from '@/components/DateNav';
 import TodayClient from '@/components/TodayClient';
 import PushupSummary from '@/components/PushupSummary';
+import AnkiSummary from '@/components/AnkiSummary';
 import Footer from '@/components/Footer';
 import { listActiveHabits } from '@/lib/habits';
 import { statusMapForDate } from '@/lib/entries';
 import { getCurrentStreak } from '@/lib/stats';
 import { getPushupState } from '@/lib/pushups';
+import { getAnkiState } from '@/lib/anki';
 import {
   addDays,
   compareISO,
@@ -49,6 +51,7 @@ export default function TodayPage({
   // not calendar date), so only surface its card on the current day.
   const isToday = selected === today;
   const pushupState = isToday ? getPushupState(tz) : null;
+  const ankiState = isToday ? getAnkiState(tz) : null;
 
   return (
     <main className="pb-28 pt-4">
@@ -60,6 +63,7 @@ export default function TodayPage({
       </header>
 
       {pushupState && <PushupSummary state={pushupState} />}
+      {ankiState && <AnkiSummary state={ankiState} />}
 
       <TodayClient date={selected} initialItems={items} />
 

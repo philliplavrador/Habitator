@@ -133,6 +133,12 @@ export function formatHuman(iso: string): string {
   return `${WEEKDAYS[dt.getUTCDay()]}, ${MONTHS[dt.getUTCMonth()]} ${dt.getUTCDate()}`;
 }
 
+/** Human label with year, e.g. "Jan 19, 2027". UTC parts match the stored day. */
+export function formatHumanYear(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${MONTHS[m - 1]} ${d}, ${y}`;
+}
+
 /**
  * Friendly relative label: "Today", "Yesterday", else the human date. `today`
  * is passed in (the caller computes it once via {@link todayISO} with the

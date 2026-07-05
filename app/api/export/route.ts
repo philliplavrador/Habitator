@@ -21,15 +21,19 @@ export async function GET() {
   const pushupSessions = db
     .prepare('SELECT * FROM pushup_sessions ORDER BY id ASC')
     .all();
+  const ankiDays = db
+    .prepare('SELECT * FROM anki_days ORDER BY date ASC')
+    .all();
 
   const payload = {
     app: 'habitator',
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     habits,
     entries,
     fasts,
     pushupSessions,
+    ankiDays,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

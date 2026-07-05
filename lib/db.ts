@@ -72,6 +72,24 @@ CREATE TABLE IF NOT EXISTS pushup_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_pushups_completed ON pushup_sessions (completed);
+
+CREATE TABLE IF NOT EXISTS anki_days (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  date       TEXT    NOT NULL,            -- YYYY-MM-DD (local day studied)
+  new_cards  INTEGER NOT NULL,           -- new cards studied that day (>= 0)
+  created_at TEXT    NOT NULL,
+  UNIQUE (date)                          -- one row per day; logging upserts
+);
+
+CREATE INDEX IF NOT EXISTS idx_anki_days_date ON anki_days (date);
+
+-- Tiny key/value store for one-time bootstraps. Used to seed the Anki tracker's
+-- pre-existing study days exactly once per database: the flag makes a reboot
+-- never re-insert them, and a later edit/delete is never silently undone.
+CREATE TABLE IF NOT EXISTS app_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
 
 function resolveDbPath(): string {

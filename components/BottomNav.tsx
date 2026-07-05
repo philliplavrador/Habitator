@@ -15,6 +15,7 @@ const TABS: { href: string; label: string; icon: ReactNode }[] = [
   { href: '/insights', label: 'Insights', icon: <InsightsIcon /> },
   { href: '/fasts', label: 'Fasting', icon: <FastingIcon /> },
   { href: '/pushups', label: 'Pushups', icon: <PushupsIcon /> },
+  { href: '/japanese', label: 'Japanese', icon: <JapaneseIcon /> },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -104,6 +105,16 @@ function PushupsIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M6.5 8v8M17.5 8v8M6.5 12h11M3.5 10v4M20.5 10v4" />
+    </svg>
+  );
+}
+
+// Two overlapping flashcards.
+function JapaneseIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="8" width="13" height="13" rx="2" />
+      <path d="M8 8V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-3" />
     </svg>
   );
 }
