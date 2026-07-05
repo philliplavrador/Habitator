@@ -25,9 +25,9 @@ function asString(v: unknown): string {
  * Validate/normalize a habit create/update payload.
  * - name is required (trimmed, non-empty, capped length)
  * - details/exceptions default to ''
- * - start_date defaults to today; must be a valid YYYY-MM-DD
+ * - start_date defaults to today (in the owner's `tz`); must be a valid YYYY-MM-DD
  */
-export function parseHabitInput(body: unknown): ParseResult<HabitInput> {
+export function parseHabitInput(body: unknown, tz: string): ParseResult<HabitInput> {
   if (typeof body !== 'object' || body === null) {
     return { ok: false, error: 'Expected a JSON object.' };
   }
@@ -41,7 +41,7 @@ export function parseHabitInput(body: unknown): ParseResult<HabitInput> {
   const exceptions = asString(b.exceptions).trim();
 
   const rawStart = asString(b.start_date).trim();
-  const start_date = rawStart === '' ? todayISO() : rawStart;
+  const start_date = rawStart === '' ? todayISO(tz) : rawStart;
   if (!isValidISODate(start_date)) {
     return { ok: false, error: 'start_date must be a valid YYYY-MM-DD date.' };
   }

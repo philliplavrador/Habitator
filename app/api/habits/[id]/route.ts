@@ -7,6 +7,7 @@ import {
 } from '@/lib/habits';
 import { getHabitStats } from '@/lib/stats';
 import { parseHabitInput } from '@/lib/validate';
+import { getTimezone } from '@/lib/tz';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,7 +60,7 @@ export async function PATCH(
     return NextResponse.json({ habit });
   }
 
-  const parsed = parseHabitInput(body);
+  const parsed = parseHabitInput(body, getTimezone());
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }

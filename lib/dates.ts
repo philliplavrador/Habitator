@@ -1,20 +1,81 @@
 // Local-day date helpers. The whole app operates on calendar dates in the
 // owner's local timezone, stored as `YYYY-MM-DD` strings to dodge UTC drift.
 //
-// "Today" is derived from the local clock. Arithmetic and comparison treat the
+// Timezone handling is automatic: the owner's IANA zone (e.g. "America/New_York")
+// is auto-detected in the browser, saved to the `tz` cookie, and read back on the
+// server (see lib/tz.ts). Every wall-clock function here takes that zone as an
+// explicit `tz` argument, so server render and client render agree exactly — no
+// dependence on where the server runs, and no hydration drift.
+//
+// "Today" is derived from the owner's zone. Arithmetic and comparison treat the
 // date string as a timezone-neutral calendar date (we never round-trip it back
-// through the local clock), so DST shifts can't move a day.
+// through a clock), so DST shifts can't move a day.
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const;
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
-/** Today's calendar date in the local timezone, as YYYY-MM-DD. */
-export function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+// ── Timezone plumbing ───────────────────────────────────────────────
+// TZ_COOKIE and isValidTimeZone live here (not lib/tz.ts) because this module
+// is client-safe: the browser-side TimezoneSync component and the server-side
+// resolver both need them, and lib/tz.ts pulls in `next/headers` (server-only).
+
+/** Cookie that carries the owner's auto-detected IANA timezone. */
+export const TZ_COOKIE = 'tz';
+
+/** True if `tz` is an IANA zone the runtime's Intl accepts (else it throws). */
+export function isValidTimeZone(tz: unknown): tz is string {
+  if (typeof tz !== 'string' || tz === '') return false;
+  try {
+    // Constructing with an unknown timeZone throws a RangeError.
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Break an instant into its calendar/clock parts *as seen in `tz`*. This is the
+ * one primitive every zoned helper builds on: it uses Intl (which knows the full
+ * IANA rule set incl. DST) instead of the runtime's own `Date` accessors, so the
+ * result is independent of the process/browser timezone.
+ */
+function zonedParts(instant: Date, tz: string): {
+  year: number; month: number; day: number;
+  hour: number; minute: number; second: number;
+} {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
+  const out: Record<string, number> = {};
+  for (const p of fmt.formatToParts(instant)) {
+    if (p.type !== 'literal') out[p.type] = Number(p.value);
+  }
+  // Under hour12:false some ICU builds emit "24" for midnight; normalize to 0.
+  if (out.hour === 24) out.hour = 0;
+  return {
+    year: out.year, month: out.month, day: out.day,
+    hour: out.hour, minute: out.minute, second: out.second,
+  };
+}
+
+/** Today's calendar date in the owner's timezone, as YYYY-MM-DD. */
+export function todayISO(tz: string): string {
+  const { year, month, day } = zonedParts(new Date(), tz);
+  return `${year}-${pad2(month)}-${pad2(day)}`;
 }
 
 /** True if `s` is a well-formed, real calendar date in YYYY-MM-DD form. */
@@ -69,26 +130,24 @@ export function rangeDates(startISO: string, endISO: string): string[] {
 export function formatHuman(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
-  const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dt.getUTCDay()];
-  const mo = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ][dt.getUTCMonth()];
-  return `${wd}, ${mo} ${dt.getUTCDate()}`;
+  return `${WEEKDAYS[dt.getUTCDay()]}, ${MONTHS[dt.getUTCMonth()]} ${dt.getUTCDate()}`;
 }
 
-/** Friendly relative label: "Today", "Yesterday", else the human date. */
-export function relativeLabel(iso: string): string {
-  const today = todayISO();
+/**
+ * Friendly relative label: "Today", "Yesterday", else the human date. `today`
+ * is passed in (the caller computes it once via {@link todayISO} with the
+ * owner's zone) so this stays a pure string function.
+ */
+export function relativeLabel(iso: string, today: string): string {
   if (iso === today) return 'Today';
   if (iso === addDays(today, -1)) return 'Yesterday';
   return formatHuman(iso);
 }
 
 // ── Timestamp / duration helpers (for fasting) ──────────────────────
-// Habits are day-granular (YYYY-MM-DD); a fast is a timespan, so it needs
-// full ISO timestamps and duration math. These use the local clock for
-// display and Date parsing for arithmetic.
+// Habits are day-granular (YYYY-MM-DD); a fast is a timespan, so it needs full
+// ISO timestamps and duration math. Instants are stored/transported in UTC
+// (unambiguous); only *display* is zoned, via the `tz` argument.
 
 /** Current instant as a full ISO 8601 timestamp (UTC). */
 export function nowISO(): string {
@@ -130,25 +189,18 @@ export function formatElapsed(totalSeconds: number): string {
 
 /**
  * Convert an ISO instant to the value shape a `<input type="datetime-local">`
- * expects: local wall-clock `YYYY-MM-DDTHH:mm` (minute precision). Client-only.
+ * expects: `YYYY-MM-DDTHH:mm` (minute precision) as wall-clock time in `tz`.
  */
-export function toLocalInputValue(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
-    d.getDate()
-  )}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+export function toLocalInputValue(iso: string, tz: string): string {
+  const { year, month, day, hour, minute } = zonedParts(new Date(iso), tz);
+  return `${year}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}`;
 }
 
-/** Human label for an instant, e.g. "Jul 4, 2:15 PM" (local time). */
-export function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  const mo = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ][d.getMonth()];
-  let h = d.getHours();
-  const ampm = h < 12 ? 'AM' : 'PM';
-  h = h % 12;
+/** Human label for an instant in `tz`, e.g. "Jul 4, 2:15 PM". */
+export function formatDateTime(iso: string, tz: string): string {
+  const { month, day, hour, minute } = zonedParts(new Date(iso), tz);
+  const ampm = hour < 12 ? 'AM' : 'PM';
+  let h = hour % 12;
   if (h === 0) h = 12;
-  return `${mo} ${d.getDate()}, ${h}:${pad2(d.getMinutes())} ${ampm}`;
+  return `${MONTHS[month - 1]} ${day}, ${h}:${pad2(minute)} ${ampm}`;
 }

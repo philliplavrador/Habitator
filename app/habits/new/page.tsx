@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import AddHabitForm from '@/components/AddHabitForm';
+import { getTimezone } from '@/lib/tz';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,7 +19,7 @@ export default function NewHabitPage() {
         <h1 className="text-lg font-bold text-text-primary">New habit</h1>
       </header>
 
-      <AddHabitForm />
+      <AddHabitForm tz={getTimezone()} />
     </main>
   );
 }

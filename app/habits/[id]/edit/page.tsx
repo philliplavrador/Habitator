@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import AddHabitForm from '@/components/AddHabitForm';
 import { getHabit } from '@/lib/habits';
+import { getTimezone } from '@/lib/tz';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,7 @@ export default function EditHabitPage({
         <h1 className="text-lg font-bold text-text-primary">Edit habit</h1>
       </header>
 
-      <AddHabitForm habit={habit} />
+      <AddHabitForm habit={habit} tz={getTimezone()} />
     </main>
   );
 }

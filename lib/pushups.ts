@@ -82,12 +82,12 @@ export function listPushupSessions(): PushupSession[] {
 }
 
 /** The full computed program state used by the Today-screen card. */
-export function getPushupState(): PushupState {
+export function getPushupState(tz: string): PushupState {
   const done = completedCount();
   const programComplete = done >= PROGRAM_DAYS;
   const currentDay = Math.min(done + 1, PROGRAM_DAYS);
   const latest = stmtLatest.get();
-  const todayDone = stmtDoneToday.get(todayISO());
+  const todayDone = stmtDoneToday.get(todayISO(tz));
 
   return {
     programDays: PROGRAM_DAYS,
@@ -107,19 +107,19 @@ export function getPushupState(): PushupState {
  * program only if the reps hit the target on every set. Returns the fresh
  * state. No-op state (unchanged) if the program is already complete.
  */
-export function logPushupSession(reps: number[]): PushupState {
-  const state = getPushupState();
+export function logPushupSession(reps: number[], tz: string): PushupState {
+  const state = getPushupState(tz);
   if (state.programComplete) return state;
 
   const target = targetForDay(state.currentDay);
   const completed = isComplete(target, reps);
   stmtInsert.run({
-    date: todayISO(),
+    date: todayISO(tz),
     day_index: state.currentDay,
     target: JSON.stringify(target),
     reps: JSON.stringify(reps.slice(0, SETS)),
     completed: completed ? 1 : 0,
     created_at: nowISO(),
   });
-  return getPushupState();
+  return getPushupState(tz);
 }

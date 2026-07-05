@@ -15,6 +15,8 @@ import type { Fast } from '@/lib/types';
 
 interface Props {
   active: Fast | null;
+  /** Owner's timezone (resolved on the server) for all wall-clock display. */
+  tz: string;
 }
 
 const HOUR_MS = 3_600_000;
@@ -22,14 +24,14 @@ const DEFAULT_WINDOW_H = 16;
 const MIN_HOURS = 1;
 const MAX_HOURS = 168;
 
-export default function FastClient({ active }: Props) {
-  if (active) return <ActiveFast fast={active} />;
-  return <StartOrLog />;
+export default function FastClient({ active, tz }: Props) {
+  if (active) return <ActiveFast fast={active} tz={tz} />;
+  return <StartOrLog tz={tz} />;
 }
 
 // ── In-progress view: ring + live timer ─────────────────────────────
 
-function ActiveFast({ fast }: { fast: Fast }) {
+function ActiveFast({ fast, tz }: { fast: Fast; tz: string }) {
   const router = useRouter();
   const startMs = Date.parse(fast.start_at);
 
@@ -85,9 +87,9 @@ function ActiveFast({ fast }: { fast: Fast }) {
         )}
       </ProgressRing>
 
-      <div className="text-center text-sm text-text-muted" suppressHydrationWarning>
-        <p>Started {formatDateTime(fast.start_at)}</p>
-        <p>Target {formatDateTime(targetEndISO)}</p>
+      <div className="text-center text-sm text-text-muted">
+        <p>Started {formatDateTime(fast.start_at, tz)}</p>
+        <p>Target {formatDateTime(targetEndISO, tz)}</p>
       </div>
 
       {error && (
@@ -115,7 +117,7 @@ type Mode = 'start' | 'log';
 const fieldClass =
   'w-full rounded-btn border border-border bg-surface px-3 py-2.5 text-text-primary outline-none focus:border-accent';
 
-function StartOrLog() {
+function StartOrLog({ tz }: { tz: string }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('start');
   const [start, setStart] = useState('');
@@ -129,14 +131,14 @@ function StartOrLog() {
   useEffect(() => {
     const now = Date.now();
     if (mode === 'start') {
-      setStart(toLocalInputValue(new Date(now).toISOString()));
-      setEnd(toLocalInputValue(new Date(now + DEFAULT_WINDOW_H * HOUR_MS).toISOString()));
+      setStart(toLocalInputValue(new Date(now).toISOString(), tz));
+      setEnd(toLocalInputValue(new Date(now + DEFAULT_WINDOW_H * HOUR_MS).toISOString(), tz));
     } else {
-      setStart(toLocalInputValue(new Date(now - DEFAULT_WINDOW_H * HOUR_MS).toISOString()));
-      setEnd(toLocalInputValue(new Date(now).toISOString()));
+      setStart(toLocalInputValue(new Date(now - DEFAULT_WINDOW_H * HOUR_MS).toISOString(), tz));
+      setEnd(toLocalInputValue(new Date(now).toISOString(), tz));
     }
     setError(null);
-  }, [mode]);
+  }, [mode, tz]);
 
   const startMs = Date.parse(start);
   const endMs = Date.parse(end);

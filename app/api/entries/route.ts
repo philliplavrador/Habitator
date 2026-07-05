@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { clearEntry, setEntry } from '@/lib/entries';
 import { getHabit } from '@/lib/habits';
 import { compareISO, isValidISODate, todayISO } from '@/lib/dates';
+import { getTimezone } from '@/lib/tz';
 import type { EntryStatus } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
   }
   // Enforce the "no future days" invariant (the UI also blocks it). A future
   // entry would otherwise skew stats — e.g. falsely extend the current streak.
-  if (compareISO(date, todayISO()) > 0) {
+  if (compareISO(date, todayISO(getTimezone())) > 0) {
     return NextResponse.json(
       { error: 'Cannot record an entry for a future date.' },
       { status: 400 }

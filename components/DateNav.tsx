@@ -6,10 +6,12 @@ interface Props {
   prevDate: string;
   /** null when `date` is today — there is no "next" past today. */
   nextDate: string | null;
+  /** Today in the owner's timezone (resolved on the server). */
+  today: string;
 }
 
 /** ‹  Today  ›  — navigates the selected day via ?date= query param. */
-export default function DateNav({ date, prevDate, nextDate }: Props) {
+export default function DateNav({ date, prevDate, nextDate, today }: Props) {
   return (
     <div className="flex items-center justify-between">
       <Link
@@ -22,7 +24,7 @@ export default function DateNav({ date, prevDate, nextDate }: Props) {
 
       <div className="text-center">
         <div className="text-base font-semibold text-text-primary">
-          {relativeLabel(date)}
+          {relativeLabel(date, today)}
         </div>
         <div className="text-xs text-text-muted">{date}</div>
       </div>
