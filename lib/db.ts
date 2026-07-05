@@ -3,12 +3,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
- * better-sqlite3 singleton.
+ * better-sqlite3 singleton — opened LAZILY (on first query, never at import).
  *
  * - The DB file lives at DATABASE_PATH (a Railway volume in prod, e.g.
  *   /data/habitator.db). Local dev falls back to ./data/habitator.db.
  * - Schema is created idempotently on open (CREATE TABLE IF NOT EXISTS), so
  *   there is no migration framework to run.
+ * - The connection is created on the first real query, NOT when this module is
+ *   imported. This matters for `next build`: its "Collecting page data" phase
+ *   imports every route module across parallel workers, and if the DB were
+ *   opened (and `PRAGMA journal_mode = WAL` run) at import, those workers would
+ *   race on the same file and fail the build with SQLITE_BUSY. Deferring the
+ *   open until a handler actually runs a query keeps the build from ever
+ *   touching the database.
  * - A globalThis singleton prevents Next.js dev hot-reload from opening many
  *   connections to the same file.
  */
@@ -88,9 +95,48 @@ const globalForDb = globalThis as unknown as {
   __habitatorDb?: Database.Database;
 };
 
-export const db: Database.Database =
-  globalForDb.__habitatorDb ?? createConnection();
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForDb.__habitatorDb = db;
+/** Open (and memoize) the real connection on first use. */
+function getDb(): Database.Database {
+  if (!globalForDb.__habitatorDb) {
+    globalForDb.__habitatorDb = createConnection();
+  }
+  return globalForDb.__habitatorDb;
 }
+
+/**
+ * A prepared statement whose underlying better-sqlite3 Statement is compiled on
+ * first access — so `db.prepare(sql)` at module top level never opens the DB.
+ */
+function lazyStatement(sql: string): Database.Statement {
+  let real: Database.Statement | undefined;
+  const resolve = () => (real ??= getDb().prepare(sql));
+  return new Proxy({} as Database.Statement, {
+    get(_target, prop) {
+      const r = resolve();
+      const value = Reflect.get(r, prop, r) as unknown;
+      return typeof value === 'function'
+        ? (value as (...args: unknown[]) => unknown).bind(r)
+        : value;
+    },
+  });
+}
+
+/**
+ * Lazy stand-in for the connection. `db.prepare(sql)` hands back a lazy
+ * statement (no connection yet); any other member access resolves the real
+ * connection on demand. This keeps every call site
+ * (`db.prepare(...).get/all/run`) unchanged while making the module
+ * import-safe for the Next.js build.
+ */
+export const db: Database.Database = new Proxy({} as Database.Database, {
+  get(_target, prop) {
+    if (prop === 'prepare') {
+      return (sql: string) => lazyStatement(sql);
+    }
+    const r = getDb();
+    const value = Reflect.get(r, prop, r) as unknown;
+    return typeof value === 'function'
+      ? (value as (...args: unknown[]) => unknown).bind(r)
+      : value;
+  },
+});
