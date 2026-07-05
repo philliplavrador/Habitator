@@ -10,18 +10,20 @@ import {
 } from '@/lib/client';
 import { todayISO } from '@/lib/dates';
 import type { Habit } from '@/lib/types';
+import Button from '@/components/ui/Button';
+import { Field, Textarea } from '@/components/ui/Field';
+import { useConfirm } from '@/components/ui/confirm';
 
 interface Props {
   /** When provided, the form edits this habit; otherwise it creates a new one. */
   habit?: Habit;
+  /** Owner's timezone (resolved on the server) for the "today" default. */
+  tz: string;
 }
 
-const labelClass = 'block text-sm font-medium text-text-secondary mb-1.5';
-const fieldClass =
-  'w-full rounded-btn border border-border bg-surface px-3 py-2.5 text-text-primary placeholder:text-text-muted outline-none focus:border-accent';
-
-export default function AddHabitForm({ habit }: Props) {
+export default function AddHabitForm({ habit, tz }: Props) {
   const router = useRouter();
+  const confirm = useConfirm();
   const editing = Boolean(habit);
 
   const [name, setName] = useState(habit?.name ?? '');
@@ -35,8 +37,8 @@ export default function AddHabitForm({ habit }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!habit) setStartDate((cur) => (cur === '' ? todayISO() : cur));
-  }, [habit]);
+    if (!habit) setStartDate((cur) => (cur === '' ? todayISO(tz) : cur));
+  }, [habit, tz]);
 
   function goBack() {
     router.push('/');
@@ -82,13 +84,13 @@ export default function AddHabitForm({ habit }: Props) {
 
   async function handleDelete() {
     if (!habit) return;
-    if (
-      !window.confirm(
-        `Delete "${habit.name}" and all its history? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Delete "${habit.name}"?`,
+      message: 'This removes the habit and all its history. This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -102,100 +104,68 @@ export default function AddHabitForm({ habit }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <div>
-        <label htmlFor="name" className={labelClass}>
-          Name
-        </label>
-        <input
-          id="name"
-          className={fieldClass}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Morning run"
-          autoFocus={!editing}
-          maxLength={200}
-        />
-      </div>
+      <Field
+        label="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="e.g. Morning run"
+        autoFocus={!editing}
+        maxLength={200}
+      />
 
-      <div>
-        <label htmlFor="details" className={labelClass}>
-          Details
-        </label>
-        <textarea
-          id="details"
-          className={`${fieldClass} min-h-[80px] resize-y`}
-          value={details}
-          onChange={(e) => setDetails(e.target.value)}
-          placeholder="What do you have to do?"
-        />
-      </div>
+      <Textarea
+        label="Details"
+        value={details}
+        onChange={(e) => setDetails(e.target.value)}
+        placeholder="What do you have to do?"
+      />
 
-      <div>
-        <label htmlFor="exceptions" className={labelClass}>
-          Exceptions
-        </label>
-        <textarea
-          id="exceptions"
-          className={`${fieldClass} min-h-[60px] resize-y`}
-          value={exceptions}
-          onChange={(e) => setExceptions(e.target.value)}
-          placeholder="e.g. if late, if sick — or None"
-        />
-      </div>
+      <Textarea
+        label="Exceptions"
+        className="min-h-[60px]"
+        value={exceptions}
+        onChange={(e) => setExceptions(e.target.value)}
+        placeholder="e.g. if late, if sick — or None"
+      />
 
-      <div>
-        <label htmlFor="start_date" className={labelClass}>
-          Start date
-        </label>
-        <input
-          id="start_date"
-          type="date"
-          className={fieldClass}
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-        />
-        <p className="mt-1 text-xs text-text-muted">
-          Stats only count days on or after this date.
-        </p>
-      </div>
+      <Field
+        label="Start date"
+        type="date"
+        value={startDate}
+        onChange={(e) => setStartDate(e.target.value)}
+        hint="Stats only count days on or after this date."
+      />
 
       {error && <p className="text-sm text-fail">{error}</p>}
 
-      <button
-        type="submit"
-        disabled={busy}
-        className="rounded-btn bg-accent px-4 py-3 text-center font-semibold text-white active:bg-accent-soft disabled:opacity-50"
-      >
-        {busy ? 'Saving…' : editing ? 'Save changes' : 'Add habit'}
-      </button>
+      <Button type="submit" size="lg" fullWidth loading={busy}>
+        {editing ? 'Save changes' : 'Add habit'}
+      </Button>
 
-      <button
-        type="button"
-        onClick={goBack}
-        disabled={busy}
-        className="rounded-btn border border-border px-4 py-2.5 text-center text-text-secondary active:bg-surface2 disabled:opacity-50"
-      >
+      <Button type="button" variant="secondary" fullWidth onClick={goBack} disabled={busy}>
         Cancel
-      </button>
+      </Button>
 
       {habit && (
         <div className="mt-2 flex flex-col gap-2 border-t border-border pt-4">
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            fullWidth
             onClick={handleArchive}
             disabled={busy}
-            className="rounded-btn border border-border px-4 py-2.5 text-center text-text-secondary active:bg-surface2 disabled:opacity-50"
           >
             {habit.archived === 0 ? 'Archive' : 'Unarchive'}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="danger"
+            fullWidth
             onClick={handleDelete}
             disabled={busy}
-            className="rounded-btn border border-fail/40 px-4 py-2.5 text-center text-fail active:bg-fail/10 disabled:opacity-50"
           >
             Delete
-          </button>
+          </Button>
         </div>
       )}
     </form>

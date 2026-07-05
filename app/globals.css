@@ -13,8 +13,8 @@ body {
 }
 
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    sans-serif;
+  font-family: var(--font-body), system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   min-height: 100dvh;
@@ -35,7 +35,63 @@ button {
 }
 
 /* Native date picker indicator is dark-on-dark by default; brighten it. */
-input[type='date']::-webkit-calendar-picker-indicator {
+input[type='date']::-webkit-calendar-picker-indicator,
+input[type='datetime-local']::-webkit-calendar-picker-indicator {
   filter: invert(0.8);
   cursor: pointer;
+}
+
+/* Accent-tinted text selection. */
+::selection {
+  background: rgba(99, 102, 241, 0.35);
+  color: #fff;
+}
+
+/* Thin dark scrollbars so overflow areas (charts, history) stay on-theme. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2f3a transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2a2f3a;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/*
+ * Respect reduced motion globally — a hard backstop alongside Framer Motion's
+ * <MotionConfig reducedMotion="user">. Anyone with the OS setting on gets a
+ * calm, static experience; confetti/celebrations are separately guarded in JS.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer utilities {
+  /* Indigo→violet gradient text, for wordmarks and headline numbers. */
+  .text-gradient {
+    background: linear-gradient(135deg, #8b8cff, #a855f7);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .glow-accent {
+    box-shadow: 0 0 24px -4px rgba(99, 102, 241, 0.55);
+  }
+  .glow-pass {
+    box-shadow: 0 0 24px -4px rgba(34, 197, 94, 0.5);
+  }
 }

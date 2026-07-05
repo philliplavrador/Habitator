@@ -1,5 +1,30 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter, Sora, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import TimezoneSync from '@/components/TimezoneSync';
+import Providers from '@/components/providers/Providers';
+import BottomNav from '@/components/BottomNav';
+
+// Self-hosted at build time (served same-origin from /_next/static) — no runtime
+// request to Google, so it works offline/as a PWA with no CSP concern.
+const body = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-body',
+  display: 'swap',
+});
+const display = Sora({
+  subsets: ['latin'],
+  weight: ['600', '700'],
+  variable: '--font-display',
+  display: 'swap',
+});
+const mono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['500', '700'],
+  variable: '--font-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Habitator',
@@ -31,9 +56,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      className={`${body.variable} ${display.variable} ${mono.variable}`}
+    >
       <body>
-        <div className="safe-top mx-auto w-full max-w-md px-4">{children}</div>
+        <Providers>
+          <TimezoneSync />
+          <div className="safe-top mx-auto w-full max-w-md px-4">{children}</div>
+          <BottomNav />
+        </Providers>
       </body>
     </html>
   );

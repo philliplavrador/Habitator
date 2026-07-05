@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import StatCard from '@/components/StatCard';
+import StatTile from '@/components/ui/StatTile';
 import Heatmap from '@/components/Heatmap';
 import HabitActions from '@/components/HabitActions';
 import { getHabit } from '@/lib/habits';
 import { listEntriesForHabit } from '@/lib/entries';
 import { getHabitStats, formatRate } from '@/lib/stats';
 import { formatHuman, todayISO } from '@/lib/dates';
+import { getTimezone } from '@/lib/tz';
 import type { EntryStatus } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -24,7 +25,7 @@ export default function HabitDetailPage({
   if (!habit) notFound();
 
   const stats = getHabitStats(id);
-  const today = todayISO();
+  const today = todayISO(getTimezone());
 
   const statusByDate: Record<string, EntryStatus> = {};
   for (const e of listEntriesForHabit(id)) statusByDate[e.date] = e.status;
@@ -79,18 +80,18 @@ export default function HabitDetailPage({
       </p>
 
       <section className="mb-3 grid grid-cols-3 gap-2">
-        <StatCard label="Completion" value={formatRate(stats.completionRate)} />
-        <StatCard
+        <StatTile label="Completion" value={formatRate(stats.completionRate)} />
+        <StatTile
           label="Current streak"
           value={String(stats.currentStreak)}
           accent="pass"
         />
-        <StatCard label="Longest streak" value={String(stats.longestStreak)} />
+        <StatTile label="Longest streak" value={String(stats.longestStreak)} />
       </section>
 
       <section className="mb-6 grid grid-cols-2 gap-2">
-        <StatCard label="Passes" value={String(stats.passes)} accent="pass" />
-        <StatCard label="Fails" value={String(stats.fails)} accent="fail" />
+        <StatTile label="Passes" value={String(stats.passes)} accent="pass" />
+        <StatTile label="Fails" value={String(stats.fails)} accent="fail" />
       </section>
 
       <section className="mb-6">

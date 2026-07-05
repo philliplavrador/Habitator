@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Field } from '@/components/ui/Field';
+import Button from '@/components/ui/Button';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,7 +38,12 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-[100dvh] flex-col items-center justify-center">
       <div className="w-full max-w-xs">
-        <h1 className="mb-1 text-center text-2xl font-bold text-text-primary">
+        {/* Signature ring mark over the gradient wordmark. */}
+        <div
+          aria-hidden="true"
+          className="mx-auto mb-5 h-12 w-12 rounded-full border-2 border-accent/70 shadow-glow-accent"
+        />
+        <h1 className="mb-1 text-center font-display text-3xl font-bold tracking-tight text-gradient">
           Habitator
         </h1>
         <p className="mb-8 text-center text-sm text-text-muted">
@@ -44,23 +51,18 @@ export default function LoginPage() {
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <input
+          <Field
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
             autoFocus
             autoComplete="current-password"
-            className="w-full rounded-btn border border-border bg-surface px-3 py-3 text-text-primary placeholder:text-text-muted outline-none focus:border-accent"
+            error={error}
           />
-          {error && <p className="text-sm text-fail">{error}</p>}
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded-btn bg-accent px-4 py-3 font-semibold text-white active:bg-accent-soft disabled:opacity-50"
-          >
-            {busy ? 'Checking…' : 'Enter'}
-          </button>
+          <Button type="submit" size="lg" fullWidth loading={busy}>
+            Enter
+          </Button>
         </form>
       </div>
     </main>

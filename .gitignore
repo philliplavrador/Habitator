@@ -33,3 +33,4 @@ yarn-error.log*
 # Owner's personal spreadsheet — real habit data, not used by the app.
 # Remove this line if you intentionally want it in the repo.
 Routine.xlsx
+.playwright-mcp/

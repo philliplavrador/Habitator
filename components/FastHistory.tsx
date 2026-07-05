@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import StatCard from './StatCard';
+import StatTile from '@/components/ui/StatTile';
+import { useConfirm } from '@/components/ui/confirm';
 import { apiDeleteFast, apiUpdateFast } from '@/lib/client';
 import {
   formatDateTime,
@@ -15,9 +16,11 @@ import type { Fast, FastStats } from '@/lib/types';
 interface Props {
   fasts: Fast[];
   stats: FastStats;
+  /** Owner's timezone (resolved on the server) for all wall-clock display. */
+  tz: string;
 }
 
-export default function FastHistory({ fasts, stats }: Props) {
+export default function FastHistory({ fasts, stats, tz }: Props) {
   // Only completed fasts appear in history; the active one lives in FastClient.
   const completed = fasts.filter((f) => f.end_at !== null);
 
@@ -26,19 +29,19 @@ export default function FastHistory({ fasts, stats }: Props) {
       <h2 className="mb-3 text-base font-bold text-text-primary">History</h2>
 
       <div className="mb-6 grid grid-cols-3 gap-2">
-        <StatCard label="Fasts" value={String(stats.totalFasts)} />
-        <StatCard
+        <StatTile label="Fasts" value={String(stats.totalFasts)} />
+        <StatTile
           label="Avg length"
           value={stats.avgHours === null ? '—' : formatDuration(stats.avgHours)}
         />
-        <StatCard
+        <StatTile
           label="Longest"
           value={
             stats.longestHours === null ? '—' : formatDuration(stats.longestHours)
           }
         />
-        <StatCard label="Total time" value={formatDuration(stats.totalHours)} />
-        <StatCard
+        <StatTile label="Total time" value={formatDuration(stats.totalHours)} />
+        <StatTile
           label="Goals hit"
           value={`${stats.goalsHit}/${stats.totalFasts}`}
           accent="pass"
@@ -50,7 +53,7 @@ export default function FastHistory({ fasts, stats }: Props) {
       ) : (
         <ul className="flex flex-col gap-2">
           {completed.map((fast) => (
-            <FastRow key={fast.id} fast={fast} />
+            <FastRow key={fast.id} fast={fast} tz={tz} />
           ))}
         </ul>
       )}
@@ -61,14 +64,15 @@ export default function FastHistory({ fasts, stats }: Props) {
 const fieldClass =
   'w-full rounded-btn border border-border bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-accent';
 
-function FastRow({ fast }: { fast: Fast }) {
+function FastRow({ fast, tz }: { fast: Fast; tz: string }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [start, setStart] = useState(() => toLocalInputValue(fast.start_at));
-  const [end, setEnd] = useState(() => toLocalInputValue(fast.end_at as string));
+  const [start, setStart] = useState(() => toLocalInputValue(fast.start_at, tz));
+  const [end, setEnd] = useState(() => toLocalInputValue(fast.end_at as string, tz));
   const [goal, setGoal] = useState(String(fast.goal_hours));
 
   const hours = hoursBetween(fast.start_at, fast.end_at as string);
@@ -112,7 +116,13 @@ function FastRow({ fast }: { fast: Fast }) {
   }
 
   async function handleDelete() {
-    if (!window.confirm('Delete this fast? This cannot be undone.')) return;
+    const ok = await confirm({
+      title: 'Delete this fast?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -201,8 +211,8 @@ function FastRow({ fast }: { fast: Fast }) {
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-xs text-text-muted" suppressHydrationWarning>
-            {formatDateTime(fast.start_at)} → {formatDateTime(fast.end_at as string)}
+          <p className="mt-0.5 text-xs text-text-muted">
+            {formatDateTime(fast.start_at, tz)} → {formatDateTime(fast.end_at as string, tz)}
           </p>
           <p className="text-xs text-text-muted">
             Goal {formatDuration(fast.goal_hours)}
