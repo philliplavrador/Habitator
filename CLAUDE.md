@@ -35,12 +35,16 @@ work.
   re-runs the schema on every boot against the existing volume DB, so a change
   must be safe to re-apply and must not lose existing data.
 
-### Pushing — current caveat
+### Pushing
 
-Local git can't reach the Windows credential store (`git push` fails with
-"Unable to persist credentials with the wincredman store") and the `gh` token is
-invalid. Until that's fixed, push through the **GitHub MCP** (`push_files` to
-`philliplavrador/Habitator`, branch `main`), then `git fetch` +
-`git diff origin/main` (expect empty) + `git reset --hard origin/main` to realign
-local and confirm the pushed content matches. Prefer a real `git push` once
-`gh auth login` is refreshed.
+`git push origin main` works directly. `gh` is authenticated and set as git's
+credential helper for github.com (via `gh auth setup-git`), which bypasses the
+broken Windows credential store (`wincredman`). So the deploy step is just:
+`git commit` then `git push origin main`.
+
+If a push ever fails with "Unable to persist credentials with the wincredman
+store" or "could not read Username", the gh token has likely expired — re-run
+`gh auth login --hostname github.com --git-protocol https --web` then
+`gh auth setup-git`. As a last resort, push via the GitHub MCP (`push_files` to
+`philliplavrador/Habitator`, branch `main`) and `git reset --hard origin/main`
+to realign local.
