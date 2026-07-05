@@ -14,6 +14,10 @@ import {
 import type { Fast } from '@/lib/types';
 import { useCelebration } from './hooks/useCelebration';
 import { useToast } from './ui/toast';
+import Button from './ui/Button';
+import Card from './ui/Card';
+import { Field } from './ui/Field';
+import SegmentedControl from './ui/SegmentedControl';
 
 interface Props {
   active: Fast | null;
@@ -118,14 +122,9 @@ function ActiveFast({ fast, tz }: { fast: Fast; tz: string }) {
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={handleStop}
-        disabled={busy}
-        className="w-full rounded-btn border border-fail/40 px-4 py-3 text-center font-semibold text-fail active:bg-fail/10 disabled:opacity-50"
-      >
+      <Button variant="danger" size="lg" fullWidth onClick={handleStop} loading={busy}>
         {busy ? 'Ending…' : 'End fast'}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -133,9 +132,6 @@ function ActiveFast({ fast, tz }: { fast: Fast; tz: string }) {
 // ── Idle view: start a live fast, or log a completed one ────────────
 
 type Mode = 'start' | 'log';
-
-const fieldClass =
-  'w-full rounded-btn border border-border bg-surface px-3 py-2.5 text-text-primary outline-none focus:border-accent';
 
 function StartOrLog({ tz }: { tz: string }) {
   const router = useRouter();
@@ -206,82 +202,61 @@ function StartOrLog({ tz }: { tz: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* Mode toggle */}
-      <div className="flex gap-1 rounded-btn border border-border bg-surface p-1">
-        {(['start', 'log'] as Mode[]).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setMode(m)}
-            className={`flex-1 rounded-btn px-3 py-2 text-center text-sm font-semibold transition-colors ${
-              mode === m
-                ? 'bg-accent text-white'
-                : 'text-text-secondary active:bg-surface2'
-            }`}
-          >
-            {m === 'start' ? 'Start a fast' : 'Log a past fast'}
-          </button>
-        ))}
-      </div>
+    <Card padding="p-4">
+      <div className="flex flex-col gap-5">
+        <SegmentedControl<Mode>
+          aria-label="Fast mode"
+          options={[
+            { value: 'start', label: 'Start a fast' },
+            { value: 'log', label: 'Log a past fast' },
+          ]}
+          value={mode}
+          onChange={setMode}
+        />
 
-      <div>
-        <label htmlFor="fast-start" className="mb-1.5 block text-sm font-medium text-text-secondary">
-          Start
-        </label>
-        <input
+        <Field
+          label="Start"
           id="fast-start"
           type="datetime-local"
-          className={fieldClass}
           value={start}
           onChange={(e) => setStart(e.target.value)}
         />
-      </div>
 
-      <div>
-        <label htmlFor="fast-end" className="mb-1.5 block text-sm font-medium text-text-secondary">
-          {mode === 'start' ? 'Target end' : 'End'}
-        </label>
-        <input
+        <Field
+          label={mode === 'start' ? 'Target end' : 'End'}
           id="fast-end"
           type="datetime-local"
-          className={fieldClass}
           value={end}
           onChange={(e) => setEnd(e.target.value)}
         />
-      </div>
 
-      <p className="text-center text-sm text-text-muted">
-        {durationOk ? (
-          <>
-            {mode === 'start' ? 'Planned window' : 'Duration'}:{' '}
-            <span className="font-semibold text-text-primary">
-              {formatDuration(durationH)}
+        <p className="text-center text-sm text-text-muted">
+          {durationOk ? (
+            <>
+              {mode === 'start' ? 'Planned window' : 'Duration'}:{' '}
+              <span className="font-semibold text-text-primary">
+                {formatDuration(durationH)}
+              </span>
+            </>
+          ) : (
+            <span className="text-text-muted">
+              Pick a window of {MIN_HOURS}–{MAX_HOURS} hours.
             </span>
-          </>
-        ) : (
-          <span className="text-text-muted">
-            Pick a window of {MIN_HOURS}–{MAX_HOURS} hours.
-          </span>
-        )}
-      </p>
+          )}
+        </p>
 
-      {error && <p className="text-sm text-fail">{error}</p>}
+        {error && <p className="text-sm text-fail">{error}</p>}
 
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={busy || !durationOk}
-        className="rounded-btn bg-accent px-4 py-3.5 text-center text-base font-semibold text-white active:bg-accent-soft disabled:opacity-50"
-      >
-        {busy
-          ? mode === 'start'
-            ? 'Starting…'
-            : 'Saving…'
-          : mode === 'start'
-          ? 'Start fast'
-          : 'Save fast'}
-      </button>
-    </div>
+        <Button
+          size="lg"
+          fullWidth
+          onClick={handleSubmit}
+          disabled={busy || !durationOk}
+          loading={busy}
+        >
+          {mode === 'start' ? 'Start fast' : 'Save fast'}
+        </Button>
+      </div>
+    </Card>
   );
 }

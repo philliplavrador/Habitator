@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import StatTile from '@/components/ui/StatTile';
+import Button from '@/components/ui/Button';
+import { Field } from '@/components/ui/Field';
 import { useConfirm } from '@/components/ui/confirm';
 import { apiDeleteFast, apiUpdateFast } from '@/lib/client';
 import {
@@ -60,9 +62,6 @@ export default function FastHistory({ fasts, stats, tz }: Props) {
     </section>
   );
 }
-
-const fieldClass =
-  'w-full rounded-btn border border-border bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-accent';
 
 function FastRow({ fast, tz }: { fast: Fast; tz: string }) {
   const router = useRouter();
@@ -136,61 +135,48 @@ function FastRow({ fast, tz }: { fast: Fast; tz: string }) {
 
   if (editing) {
     return (
-      <li className="rounded-card border border-border bg-surface p-3">
+      <li className="rounded-card border border-border bg-surface p-3 shadow-card">
         <div className="flex flex-col gap-3">
-          <label className="text-xs text-text-muted">
-            Start
-            <input
-              type="datetime-local"
-              className={`${fieldClass} mt-1`}
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-            />
-          </label>
-          <label className="text-xs text-text-muted">
-            End
-            <input
-              type="datetime-local"
-              className={`${fieldClass} mt-1`}
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-            />
-          </label>
-          <label className="text-xs text-text-muted">
-            Goal (hours)
-            <input
-              type="number"
-              min={1}
-              max={168}
-              step="0.5"
-              className={`${fieldClass} mt-1`}
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-            />
-          </label>
+          <Field
+            label="Start"
+            type="datetime-local"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+          />
+          <Field
+            label="End"
+            type="datetime-local"
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+          />
+          <Field
+            label="Goal (hours)"
+            type="number"
+            min={1}
+            max={168}
+            step="0.5"
+            value={goal}
+            onChange={(e) => setGoal(e.target.value)}
+          />
 
           {error && <p className="text-sm text-fail">{error}</p>}
 
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={busy}
-              className="flex-1 rounded-btn bg-accent px-3 py-2 text-sm font-semibold text-white active:bg-accent-soft disabled:opacity-50"
-            >
-              {busy ? 'Saving…' : 'Save'}
-            </button>
-            <button
-              type="button"
+            <Button size="sm" fullWidth onClick={handleSave} loading={busy}>
+              Save
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              fullWidth
               onClick={() => {
                 setEditing(false);
                 setError(null);
               }}
               disabled={busy}
-              className="flex-1 rounded-btn border border-border px-3 py-2 text-sm text-text-secondary active:bg-surface2 disabled:opacity-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       </li>
@@ -219,21 +205,12 @@ function FastRow({ fast, tz }: { fast: Fast; tz: string }) {
           </p>
         </div>
         <div className="flex shrink-0 gap-1">
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="rounded-btn border border-border px-2.5 py-1.5 text-xs text-text-secondary active:bg-surface2"
-          >
+          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
             Edit
-          </button>
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={busy}
-            className="rounded-btn border border-fail/40 px-2.5 py-1.5 text-xs text-fail active:bg-fail/10 disabled:opacity-50"
-          >
+          </Button>
+          <Button size="sm" variant="danger" onClick={handleDelete} disabled={busy}>
             Delete
-          </button>
+          </Button>
         </div>
       </div>
       {error && <p className="mt-2 text-sm text-fail">{error}</p>}
