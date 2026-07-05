@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import StatTile from '@/components/ui/StatTile';
 import Heatmap from '@/components/Heatmap';
+import HabitCalendar from '@/components/HabitCalendar';
 import HabitActions from '@/components/HabitActions';
 import ChartCard from '@/components/charts/ChartCard';
 import LineTrend from '@/components/charts/LineTrend';
@@ -126,6 +127,23 @@ export default function HabitDetailPage({
           startDate={habit.start_date}
           today={today}
         />
+      </section>
+
+      <section className="mb-6">
+        <h2 className="mb-3 text-sm font-semibold text-text-secondary">
+          Edit days
+        </h2>
+        <div className="rounded-card border border-border bg-surface p-3 shadow-card">
+          <HabitCalendar
+            habitId={habit.id}
+            initialStatus={statusByDate}
+            startDate={habit.start_date}
+            today={today}
+          />
+        </div>
+        <p className="mt-2 text-xs text-text-muted">
+          Tap any day to mark it pass, fail, or clear it back to an exception.
+        </p>
       </section>
 
       {since.length > 0 && (
