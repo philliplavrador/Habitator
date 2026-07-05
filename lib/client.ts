@@ -126,3 +126,22 @@ export async function apiLogPushups(reps: number[]): Promise<PushupState> {
   if (!res.ok) await asError(res);
   return (await res.json()).state as PushupState;
 }
+
+export async function apiUpdatePushups(
+  id: number,
+  reps: number[]
+): Promise<PushupState> {
+  const res = await fetch(`/api/pushups/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reps }),
+  });
+  if (!res.ok) await asError(res);
+  return (await res.json()).state as PushupState;
+}
+
+export async function apiDeletePushups(id: number): Promise<PushupState> {
+  const res = await fetch(`/api/pushups/${id}`, { method: 'DELETE' });
+  if (!res.ok) await asError(res);
+  return (await res.json()).state as PushupState;
+}

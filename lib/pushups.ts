@@ -47,6 +47,15 @@ const stmtInsert = db.prepare(
   `INSERT INTO pushup_sessions (date, day_index, target, reps, completed, created_at)
    VALUES (@date, @day_index, @target, @reps, @completed, @created_at)`
 );
+const stmtGetOne = db.prepare<[number]>(
+  `SELECT * FROM pushup_sessions WHERE id = ?`
+);
+const stmtUpdateReps = db.prepare(
+  `UPDATE pushup_sessions SET reps = @reps, completed = @completed WHERE id = @id`
+);
+const stmtDeleteOne = db.prepare<[number]>(
+  `DELETE FROM pushup_sessions WHERE id = ?`
+);
 
 // Rows store target/reps as JSON text; hydrate to the domain shape.
 function hydrate(row: unknown): PushupSession {
@@ -122,4 +131,37 @@ export function logPushupSession(reps: number[], tz: string): PushupState {
     created_at: nowISO(),
   });
   return getPushupState(tz);
+}
+
+/** A single logged session by id. */
+export function getPushupSession(id: number): PushupSession | undefined {
+  const row = stmtGetOne.get(id);
+  return row ? hydrate(row) : undefined;
+}
+
+/**
+ * Update a session's actual reps and recompute `completed` from its FROZEN
+ * target. `day_index` and `target` are never recomputed, which keeps the
+ * program self-consistent: progression is derived purely from
+ * COUNT(completed = 1), so flipping `completed` 1↔0 moves the current day by
+ * exactly one. Returns the fresh row, or undefined if the id is unknown.
+ */
+export function updatePushupSession(
+  id: number,
+  reps: number[]
+): PushupSession | undefined {
+  const existing = getPushupSession(id);
+  if (!existing) return undefined;
+  const completed = isComplete(existing.target, reps);
+  stmtUpdateReps.run({
+    id,
+    reps: JSON.stringify(reps.slice(0, SETS)),
+    completed: completed ? 1 : 0,
+  });
+  return getPushupSession(id);
+}
+
+/** Delete a session. Returns true if a row was removed. */
+export function deletePushupSession(id: number): boolean {
+  return stmtDeleteOne.run(id).changes > 0;
 }

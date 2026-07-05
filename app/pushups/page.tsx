@@ -1,4 +1,5 @@
 import PushupCard from '@/components/PushupCard';
+import PushupHistory from '@/components/PushupHistory';
 import StatTile from '@/components/ui/StatTile';
 import ChartCard from '@/components/charts/ChartCard';
 import LineTrend from '@/components/charts/LineTrend';
@@ -74,6 +75,8 @@ export default function PushupsPage() {
           </ChartCard>
         </section>
       )}
+
+      <PushupHistory sessions={sessions} />
     </main>
   );
 }
