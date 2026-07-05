@@ -12,12 +12,17 @@ import {
   toLocalInputValue,
 } from '@/lib/dates';
 import type { Fast } from '@/lib/types';
+import { useCelebration } from './hooks/useCelebration';
+import { useToast } from './ui/toast';
 
 interface Props {
   active: Fast | null;
   /** Owner's timezone (resolved on the server) for all wall-clock display. */
   tz: string;
 }
+
+// Fire the goal-reached burst at most once per fast per session.
+const celebratedFasts = new Set<number>();
 
 const HOUR_MS = 3_600_000;
 const DEFAULT_WINDOW_H = 16;
@@ -54,6 +59,21 @@ function ActiveFast({ fast, tz }: { fast: Fast; tz: string }) {
   const progress = goalSec > 0 ? elapsedSec / goalSec : 0;
   const overageSec = elapsedSec - goalSec;
   const targetEndISO = new Date(startMs + fast.goal_hours * HOUR_MS).toISOString();
+
+  // Celebrate crossing the goal — once per fast per session.
+  const { burst } = useCelebration();
+  const { show } = useToast();
+  useEffect(() => {
+    if (reached && !celebratedFasts.has(fast.id)) {
+      celebratedFasts.add(fast.id);
+      burst();
+      show({
+        tone: 'success',
+        title: 'Goal reached! 🎯',
+        description: `You passed your ${formatDuration(fast.goal_hours)} goal.`,
+      });
+    }
+  }, [reached, fast.id, fast.goal_hours, burst, show]);
 
   async function handleStop() {
     setBusy(true);

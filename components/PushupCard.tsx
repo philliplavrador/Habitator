@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import ProgressBar from './ProgressBar';
 import { apiLogPushups } from '@/lib/client';
 import type { PushupState } from '@/lib/types';
+import { useCelebration } from './hooks/useCelebration';
+import { useToast } from './ui/toast';
 
 interface Props {
   initialState: PushupState;
@@ -21,6 +23,8 @@ function restLabel(seconds: number): string {
 
 export default function PushupCard({ initialState }: Props) {
   const router = useRouter();
+  const { burst } = useCelebration();
+  const { show } = useToast();
   const [state, setState] = useState<PushupState>(initialState);
   const [reps, setReps] = useState<string[]>(initialState.target.map(String));
   const [logging, setLogging] = useState(false); // reveal input in the rested state
@@ -70,6 +74,18 @@ export default function PushupCard({ initialState }: Props) {
             ' · '
           )}. Day ${a.day_index} stays until you hit every set.`
         );
+      } else if (next.completedCount > state.completedCount) {
+        // A program day was just completed — celebrate.
+        burst();
+        show({
+          tone: 'success',
+          title: next.programComplete
+            ? 'Program complete! 💪'
+            : `Day ${a?.day_index ?? state.currentDay} done!`,
+          description: next.programComplete
+            ? `All ${next.programDays} days finished.`
+            : `On to day ${next.currentDay}.`,
+        });
       }
       router.refresh();
     } catch (e) {

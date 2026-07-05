@@ -41,6 +41,7 @@ export const metadata: Metadata = {
     apple: '/icons/apple-touch-icon.png',
   },
   formatDetection: { telephone: false },
+  other: { 'mobile-web-app-capable': 'yes' },
 };
 
 export const viewport: Viewport = {

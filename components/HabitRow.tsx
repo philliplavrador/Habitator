@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { motion } from 'framer-motion';
 import type { EntryStatus, HabitDayView } from '@/lib/types';
 
 interface Props {
@@ -10,6 +11,9 @@ interface Props {
   onSetStatus: (next: EntryStatus | null) => void;
 }
 
+const tap = { scale: 0.86 };
+const spring = { type: 'spring', stiffness: 420, damping: 16 } as const;
+
 export default function HabitRow({ view, busy, onSetStatus }: Props) {
   const { habit, status, currentStreak } = view;
 
@@ -17,7 +21,7 @@ export default function HabitRow({ view, busy, onSetStatus }: Props) {
   const tapFail = () => onSetStatus(status === 'fail' ? null : 'fail');
 
   return (
-    <li className="flex items-center gap-3 rounded-card bg-surface border border-border px-3 py-3">
+    <li className="flex items-center gap-3 rounded-card border border-border bg-surface px-3 py-3 shadow-card">
       <div className="min-w-0 flex-1">
         <Link
           href={`/habits/${habit.id}`}
@@ -33,36 +37,40 @@ export default function HabitRow({ view, busy, onSetStatus }: Props) {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <button
+        <motion.button
           type="button"
           aria-label="Mark pass"
           aria-pressed={status === 'pass'}
           disabled={busy}
           onClick={tapPass}
+          whileTap={tap}
+          transition={spring}
           className={[
-            'flex h-11 w-11 items-center justify-center rounded-btn border text-lg transition-colors disabled:opacity-50',
+            'flex h-11 w-11 items-center justify-center rounded-btn border text-lg disabled:opacity-50',
             status === 'pass'
-              ? 'border-pass bg-pass text-black'
+              ? 'border-pass bg-pass text-black shadow-glow-pass'
               : 'border-border bg-surface2 text-text-muted active:border-pass',
           ].join(' ')}
         >
           ✓
-        </button>
-        <button
+        </motion.button>
+        <motion.button
           type="button"
           aria-label="Mark fail"
           aria-pressed={status === 'fail'}
           disabled={busy}
           onClick={tapFail}
+          whileTap={tap}
+          transition={spring}
           className={[
-            'flex h-11 w-11 items-center justify-center rounded-btn border text-lg transition-colors disabled:opacity-50',
+            'flex h-11 w-11 items-center justify-center rounded-btn border text-lg disabled:opacity-50',
             status === 'fail'
               ? 'border-fail bg-fail text-white'
               : 'border-border bg-surface2 text-text-muted active:border-fail',
           ].join(' ')}
         >
           ✗
-        </button>
+        </motion.button>
       </div>
     </li>
   );
