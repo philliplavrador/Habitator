@@ -8,17 +8,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { dataDir } from './db';
 import type { RepProgramKey } from './types';
 
 /**
- * Reject anything larger — a short lift clip is tens of MB. Kept well under the
- * container's memory ceiling because `req.formData()` buffers the whole part in
- * memory (undici doesn't spool to disk), so the cap doubles as an OOM guard.
+ * Hard upper bound on a stored video. Uploads STREAM straight to disk (see
+ * `saveVideoStream`) with a running byte-count guard, so this is a disk/abuse
+ * cap, NOT an in-memory buffer — nothing holds the whole file at once. A guided
+ * whole-workout recording (all sets + rests, ~1 Mbps) lands well under this.
  */
-export const MAX_VIDEO_BYTES = 80 * 1024 * 1024; // 80 MB
+export const MAX_VIDEO_BYTES = 200 * 1024 * 1024; // 200 MB
 
 // These three tables are three views of the same ext↔MIME mapping and can drift
 // out of sync (e.g. adding a format to one but not the others). They'd ideally
@@ -61,10 +62,98 @@ function extOf(name: string): string {
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
 }
 
-/** True if `file` looks like a video (by MIME or a known extension). */
-export function isVideoFile(file: File): boolean {
-  if (file.type && file.type.startsWith('video/')) return true;
-  return ALLOWED_EXT.has(extOf(file.name ?? ''));
+/** The bare MIME type, stripped of any `;codecs=…` parameter. */
+function baseMime(contentType: string): string {
+  return (contentType.split(';')[0] ?? '').trim().toLowerCase();
+}
+
+/** True if the (filename, contentType) pair looks like a video we accept. */
+function looksLikeVideo(filename: string, contentType: string): boolean {
+  if (baseMime(contentType).startsWith('video/')) return true;
+  return ALLOWED_EXT.has(extOf(filename));
+}
+
+export type SaveVideoResult =
+  | { ok: true; filename: string }
+  | { ok: false; status: number; error: string };
+
+const tooLargeError = `Video too large (max ${Math.round(
+  MAX_VIDEO_BYTES / 1024 / 1024
+)} MB).`;
+
+/**
+ * Stream an uploaded video body straight to a new file on the volume and return
+ * its stored filename. The body is piped through a byte-counter that aborts (and
+ * unlinks the partial file) the moment it exceeds MAX_VIDEO_BYTES, so a giant
+ * upload never fills the disk and is never buffered in memory.
+ *
+ * `set` (0-based) is folded into the filename purely for debuggability; pass it
+ * for per-set videos, omit it for the whole-workout video.
+ */
+export async function saveVideoStream(
+  key: RepProgramKey,
+  sessionId: number,
+  body: ReadableStream<Uint8Array> | null,
+  meta: { filename: string; contentType: string },
+  set?: number
+): Promise<SaveVideoResult> {
+  if (!body) {
+    return { ok: false, status: 400, error: 'No video file provided.' };
+  }
+  if (!looksLikeVideo(meta.filename, meta.contentType)) {
+    return { ok: false, status: 415, error: 'That file is not a video.' };
+  }
+
+  const nameExt = extOf(meta.filename);
+  const ext = ALLOWED_EXT.has(nameExt)
+    ? nameExt
+    : EXT_BY_MIME[baseMime(meta.contentType)] ?? 'mp4';
+  const tag = set === undefined ? '' : `-s${set}`;
+  const filename = `${key}-${sessionId}${tag}-${crypto
+    .randomBytes(8)
+    .toString('hex')}.${ext}`;
+  const dest = path.join(uploadsDir(), filename);
+
+  let bytes = 0;
+  let overflow = false;
+  const guard = new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      bytes += chunk.length;
+      if (bytes > MAX_VIDEO_BYTES) {
+        overflow = true;
+        cb(new Error('video-too-large'));
+        return;
+      }
+      cb(null, chunk);
+    },
+  });
+
+  try {
+    await pipeline(
+      Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]),
+      guard,
+      fs.createWriteStream(dest)
+    );
+  } catch (e) {
+    try {
+      fs.unlinkSync(dest);
+    } catch {
+      /* nothing to clean up */
+    }
+    if (overflow) return { ok: false, status: 413, error: tooLargeError };
+    throw e;
+  }
+
+  if (bytes === 0) {
+    try {
+      fs.unlinkSync(dest);
+    } catch {
+      /* nothing to clean up */
+    }
+    return { ok: false, status: 400, error: 'No video file provided.' };
+  }
+
+  return { ok: true, filename };
 }
 
 /**
@@ -82,39 +171,6 @@ function safeName(filename: string): string | null {
     return null;
   }
   return /^[\w.-]+$/.test(filename) ? filename : null;
-}
-
-/** Persist an uploaded video and return its stored filename. */
-export async function saveVideo(
-  key: RepProgramKey,
-  sessionId: number,
-  file: File
-): Promise<string> {
-  const nameExt = extOf(file.name ?? '');
-  const ext = ALLOWED_EXT.has(nameExt)
-    ? nameExt
-    : EXT_BY_MIME[file.type] ?? 'mp4';
-  const filename = `${key}-${sessionId}-${crypto
-    .randomBytes(8)
-    .toString('hex')}.${ext}`;
-  const dest = path.join(uploadsDir(), filename);
-  try {
-    // Stream the part straight to disk — avoids a second full in-memory copy
-    // (arrayBuffer) and keeps the write off the event loop. file.stream() is a
-    // web ReadableStream; Readable.fromWeb adapts it to a Node stream.
-    await pipeline(
-      Readable.fromWeb(file.stream() as Parameters<typeof Readable.fromWeb>[0]),
-      fs.createWriteStream(dest)
-    );
-  } catch (e) {
-    try {
-      fs.unlinkSync(dest);
-    } catch {
-      /* nothing to clean up */
-    }
-    throw e;
-  }
-  return filename;
 }
 
 /**

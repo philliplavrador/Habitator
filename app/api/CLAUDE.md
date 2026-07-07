@@ -8,7 +8,14 @@ import the configured program instance (`pushupProgram` / `pullupProgram`) and
 bind a factory from `lib/repRoute.ts`:
 - `route.ts` → `createRepCollectionRoute` (`GET` state, `POST` log)
 - `[id]/route.ts` → `createRepItemRoute` (`PATCH` reps, `DELETE`)
-- `[id]/video/route.ts` → `createRepVideoRoute` (`GET`/`PUT`/`DELETE`, Range-aware)
+- `[id]/video/route.ts` → `createRepVideoRoute` (`GET`/`PUT`/`DELETE`, Range-aware) —
+  the single whole-workout video (the guided one-take recording)
+- `[id]/video/[set]/route.ts` → `createRepSetVideoRoute` (`GET`/`PUT`/`DELETE`) —
+  one video per set (0-based index into the `videos` JSON array)
+
+Both `PUT`s take the video as the **raw request body** (not multipart), streamed
+straight to disk by `lib/media.ts::saveVideoStream`; the client passes the
+filename as a `?name=` query param.
 
 The two programs' route files are **structurally identical** — only the imported
 program differs. When you change one program's routes, change the other's in
@@ -44,10 +51,11 @@ they set cookies — and aren't cached).
 - not found → `404 { error: '… not found.' }`
 
 ## export/route.ts — version + table list are coupled
-`GET /api/export` hardcodes `version: 6` **and** a fixed list of tables
+`GET /api/export` hardcodes `version: 7` **and** a fixed list of tables
 (habits, entries, fasts, pushup_sessions, pullup_sessions, anki_days). When you
-add a tracked domain, add its query **and** bump `version` together — the two
-must not drift.
+add a tracked domain **or a new column on an exported table**, bump `version`
+together with the change — the two must not drift. (v7 added `*_sessions.videos`,
+the per-set video array; `SELECT *` already carries new columns through.)
 
 ## Cross-scope guard (entries)
 `POST /api/entries` confirms the habit belongs to the user before writing,

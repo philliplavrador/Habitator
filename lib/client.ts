@@ -61,6 +61,23 @@ async function requestJson<T>(
   return unwrap<T>(await request(url, method, body), key);
 }
 
+/**
+ * Upload a video by streaming its raw bytes as the PUT body (NOT multipart), so
+ * the server can pipe them straight to disk without buffering the whole file.
+ * The filename rides along as a `?name=` query param (for extension detection);
+ * the browser sets Content-Type from the File/Blob. Returns the fresh `state`.
+ */
+async function putVideo(url: string, file: File): Promise<RepProgramState> {
+  const sep = url.includes('?') ? '&' : '?';
+  const res = await fetch(`${url}${sep}name=${encodeURIComponent(file.name || 'video')}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file,
+  });
+  if (!res.ok) await asError(res);
+  return unwrap<RepProgramState>(res, 'state');
+}
+
 export async function apiSetEntry(
   habitId: number,
   date: string,
@@ -147,20 +164,13 @@ export async function apiDeleteRepSession(
   return requestJson<RepProgramState>(`/api/${program}/${id}`, 'DELETE', 'state');
 }
 
-/** Attach or replace the optional video on a session. Returns fresh state. */
+/** Attach or replace the whole-workout video on a session. Returns fresh state. */
 export async function apiUploadRepVideo(
   program: RepProgramKey,
   id: number,
   file: File
 ): Promise<RepProgramState> {
-  const fd = new FormData();
-  fd.append('video', file);
-  return requestJson<RepProgramState>(
-    `/api/${program}/${id}/video`,
-    'PUT',
-    'state',
-    fd
-  );
+  return putVideo(`/api/${program}/${id}/video`, file);
 }
 
 export async function apiDeleteRepVideo(
@@ -169,6 +179,28 @@ export async function apiDeleteRepVideo(
 ): Promise<RepProgramState> {
   return requestJson<RepProgramState>(
     `/api/${program}/${id}/video`,
+    'DELETE',
+    'state'
+  );
+}
+
+/** Attach or replace one set's video (0-based index). Returns fresh state. */
+export async function apiUploadRepSetVideo(
+  program: RepProgramKey,
+  id: number,
+  set: number,
+  file: File
+): Promise<RepProgramState> {
+  return putVideo(`/api/${program}/${id}/video/${set}`, file);
+}
+
+export async function apiDeleteRepSetVideo(
+  program: RepProgramKey,
+  id: number,
+  set: number
+): Promise<RepProgramState> {
+  return requestJson<RepProgramState>(
+    `/api/${program}/${id}/video/${set}`,
     'DELETE',
     'state'
   );

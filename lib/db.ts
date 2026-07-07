@@ -121,6 +121,14 @@ CREATE TABLE IF NOT EXISTS app_meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- ── Additive column migrations ────────────────────────────────────────
+-- CREATE TABLE IF NOT EXISTS never alters an existing table, so new columns
+-- on already-created tables go here as guarded ALTERs (safe to re-run every
+-- boot). Per-set videos: a JSON-in-TEXT array (one nullable filename per set),
+-- alongside the existing single video column (the whole-workout recording).
+ALTER TABLE pushup_sessions ADD COLUMN IF NOT EXISTS videos TEXT;
+ALTER TABLE pullup_sessions ADD COLUMN IF NOT EXISTS videos TEXT;
 `;
 
 // Arbitrary constant identifying the schema/migration advisory lock. Any two

@@ -7,8 +7,10 @@ import { useConfirm } from './ui/confirm';
 import EditableHistoryRow from './EditableHistoryRow';
 import {
   apiDeleteRepSession,
+  apiDeleteRepSetVideo,
   apiDeleteRepVideo,
   apiUpdateReps,
+  apiUploadRepSetVideo,
   apiUploadRepVideo,
 } from '@/lib/client';
 import { formatHuman } from '@/lib/dates';
@@ -38,6 +40,9 @@ export default function RepProgramHistory({ program, sessions }: Props) {
   );
 }
 
+/** Target of a pending upload: the whole-workout video, or one set's slot. */
+type UploadTarget = { kind: 'workout' } | { kind: 'set'; index: number };
+
 function SessionRow({
   program,
   session,
@@ -48,12 +53,21 @@ function SessionRow({
   const router = useRouter();
   const confirm = useConfirm();
   const [reps, setReps] = useState<string[]>(session.reps.map(String));
-  const [showVideo, setShowVideo] = useState(false);
+  // Which video is currently expanded in the inline player (its URL), if any.
+  const [playing, setPlaying] = useState<string | null>(null);
+  const pendingTarget = useRef<UploadTarget | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const videoUrl = session.video
+  const workoutUrl = session.video
     ? `/api/${program}/${session.id}/video?v=${encodeURIComponent(session.video)}`
     : null;
+  const setUrl = (i: number) => {
+    const name = session.videos[i];
+    return name
+      ? `/api/${program}/${session.id}/video/${i}?v=${encodeURIComponent(name)}`
+      : null;
+  };
+  const hasAnyVideo = !!workoutUrl || session.videos.some(Boolean);
 
   async function save() {
     const parsed = reps.map((r) => {
@@ -67,7 +81,8 @@ function SessionRow({
     <EditableHistoryRow
       confirmCopy={{
         title: 'Delete this session?',
-        message: 'This may roll your current program day back, and removes its video.',
+        message:
+          'This may roll your current program day back, and removes its videos.',
         confirmLabel: 'Delete',
       }}
       onSave={save}
@@ -88,7 +103,7 @@ function SessionRow({
                 attempted
               </span>
             )}
-            {videoUrl && <span className="text-xs text-text-muted">🎬</span>}
+            {hasAnyVideo && <span className="text-xs text-text-muted">🎬</span>}
           </div>
           <p className="mt-0.5 text-sm tabular-nums text-text-secondary">
             {session.reps.join(' · ')}{' '}
@@ -122,24 +137,36 @@ function SessionRow({
         </>
       }
       extraActions={({ busy, run }) => {
-        const uploadVideo = (file: File) =>
+        const upload = (file: File) => {
+          const target = pendingTarget.current;
+          pendingTarget.current = null;
+          if (fileRef.current) fileRef.current.value = '';
+          if (!target) return;
           run(
             async () => {
-              await apiUploadRepVideo(program, session.id, file);
-              setShowVideo(true);
+              if (target.kind === 'workout') {
+                await apiUploadRepVideo(program, session.id, file);
+              } else {
+                await apiUploadRepSetVideo(program, session.id, target.index, file);
+              }
+              // Collapse any open player: a replace mints a new filename, so the
+              // `playing` URL would otherwise point at the now-deleted old file
+              // and the toggle label would desync. Re-open to see the new video.
+              setPlaying(null);
               router.refresh();
             },
-            {
-              errorTitle: 'Could not upload video',
-              onFinally: () => {
-                if (fileRef.current) fileRef.current.value = '';
-              },
-            },
+            { errorTitle: 'Could not upload video' }
           );
+        };
 
-        const removeVideo = async () => {
+        const pick = (target: UploadTarget) => {
+          pendingTarget.current = target;
+          fileRef.current?.click();
+        };
+
+        const removeWorkout = async () => {
           const ok = await confirm({
-            title: 'Remove this video?',
+            title: 'Remove the workout video?',
             message: 'The session stays; only the video is deleted.',
             confirmLabel: 'Remove',
             danger: true,
@@ -147,17 +174,37 @@ function SessionRow({
           if (!ok) return;
           run(
             async () => {
+              if (playing === workoutUrl) setPlaying(null);
               await apiDeleteRepVideo(program, session.id);
-              setShowVideo(false);
               router.refresh();
             },
-            { errorTitle: 'Could not remove video' },
+            { errorTitle: 'Could not remove video' }
           );
         };
 
+        const removeSet = async (i: number) => {
+          const ok = await confirm({
+            title: `Remove the set ${i + 1} video?`,
+            message: 'The session stays; only the video is deleted.',
+            confirmLabel: 'Remove',
+            danger: true,
+          });
+          if (!ok) return;
+          run(
+            async () => {
+              if (playing === setUrl(i)) setPlaying(null);
+              await apiDeleteRepSetVideo(program, session.id, i);
+              router.refresh();
+            },
+            { errorTitle: 'Could not remove video' }
+          );
+        };
+
+        const toggle = (url: string) =>
+          setPlaying((cur) => (cur === url ? null : url));
+
         return (
           <>
-            {/* Optional video: play inline, replace, or remove; add if none yet. */}
             <input
               ref={fileRef}
               type="file"
@@ -165,51 +212,95 @@ function SessionRow({
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) uploadVideo(f);
+                if (f) upload(f);
               }}
             />
-            <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-border/60 pt-2 text-xs">
-              {videoUrl ? (
-                <>
+
+            <div className="mt-2 flex flex-col gap-2 border-t border-border/60 pt-2 text-xs">
+              {/* Whole-workout video (the guided one-take recording). */}
+              <div className="flex flex-wrap items-center gap-3">
+                {workoutUrl ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => toggle(workoutUrl)}
+                      className="text-accent-400 active:text-accent"
+                    >
+                      {playing === workoutUrl ? 'Hide workout' : '▶ Workout video'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => pick({ kind: 'workout' })}
+                      disabled={busy}
+                      className="text-text-muted underline active:text-text-primary disabled:opacity-50"
+                    >
+                      Replace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removeWorkout}
+                      disabled={busy}
+                      className="text-text-muted underline active:text-fail disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </>
+                ) : (
                   <button
                     type="button"
-                    onClick={() => setShowVideo((v) => !v)}
-                    className="text-accent-400 active:text-accent"
-                  >
-                    {showVideo ? 'Hide video' : '▶ Play video'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
+                    onClick={() => pick({ kind: 'workout' })}
                     disabled={busy}
                     className="text-text-muted underline active:text-text-primary disabled:opacity-50"
                   >
-                    Replace
+                    {busy ? 'Uploading…' : '🎬 Add workout video'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={removeVideo}
-                    disabled={busy}
-                    className="text-text-muted underline active:text-fail disabled:opacity-50"
-                  >
-                    Remove video
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={busy}
-                  className="text-text-muted underline active:text-text-primary disabled:opacity-50"
-                >
-                  {busy ? 'Uploading…' : '🎬 Add video'}
-                </button>
-              )}
+                )}
+              </div>
+
+              {/* Per-set videos: play/remove if present, add if empty. */}
+              <div className="flex flex-wrap items-center gap-2">
+                {session.videos.map((_, i) => {
+                  const url = setUrl(i);
+                  return url ? (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 rounded-btn border border-border bg-surface2/60 px-2 py-1"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggle(url)}
+                        className="text-accent-400 active:text-accent"
+                      >
+                        {playing === url ? `Hide set ${i + 1}` : `▶ Set ${i + 1}`}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeSet(i)}
+                        disabled={busy}
+                        aria-label={`Remove set ${i + 1} video`}
+                        className="text-text-muted active:text-fail disabled:opacity-50"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => pick({ kind: 'set', index: i })}
+                      disabled={busy}
+                      className="rounded-btn border border-dashed border-border px-2 py-1 text-text-muted active:bg-surface2 disabled:opacity-50"
+                    >
+                      🎬 Set {i + 1}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {videoUrl && showVideo && (
+            {playing && (
               <video
-                src={videoUrl}
+                src={playing}
                 controls
                 playsInline
                 preload="metadata"

@@ -118,8 +118,17 @@ export interface RepSession {
   target: number[]; // [t1, t2, t3] prescribed reps
   reps: number[]; // [r1, r2, r3] actual reps done
   completed: boolean; // met target on every set
-  /** Optional stored video filename; null when no video is attached. */
+  /**
+   * Optional single video of the whole workout (the guided one-take recording,
+   * and legacy pre-per-set rows). Null when none is attached.
+   */
   video: string | null;
+  /**
+   * Optional per-set videos, one slot per set (length === config.sets). Each
+   * slot is a stored filename or null. Used by the manual "one video per set"
+   * upload. Stored as JSON-in-TEXT (migration-fidelity), like target/reps.
+   */
+  videos: (string | null)[];
   created_at: string;
 }
 

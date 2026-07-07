@@ -21,8 +21,11 @@ touching a query, a streak, or the migration.
 - `dates.ts` — client-safe local-day + timestamp helpers; also owns `TZ_COOKIE`
   and `isValidTimeZone` (lives here, not tz.ts, because both sides need them).
 - `migrate.ts` — one-time SQLite→Postgres importer (see invariants below).
-- `media.ts` — server-only rep-program video storage (`<dataDir>/uploads/`),
-  Range-aware streaming, path-traversal guard.
+- `media.ts` — server-only rep-program video storage (`<dataDir>/uploads/`).
+  Uploads STREAM to disk (`saveVideoStream`, raw body → byte-counter guard, no
+  in-memory buffering), reads are Range-aware (`buildVideoResponse`), plus a
+  path-traversal guard. Holds both the whole-workout `video` and the per-set
+  `videos` for a session.
 - `pageContext.ts` — `requirePageContext()` → `{ userId, tz, today }`; redirects
   to /login when unauthed. Standard server-page opener.
 - `apiRoute.ts` — shared route helpers: `unauthorized()`, `readJson()`,

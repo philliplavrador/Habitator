@@ -26,6 +26,10 @@ composition of what's already here.
   `heroInputClass` (rep programs + Anki reuse it).
 - `RepProgramPage` — the entire pushups/pullups screen shell, parameterized only
   by data-fetchers + title/subtitle.
+- `GuidedWorkout` — the camera "record workout" flow for a rep program: ONE
+  continuous MediaRecorder take across all sets + rests (feature-detected, with a
+  manual fallback). Owned by `RepProgramCard`, which toggles between it ("Record")
+  and manual entry ("Type reps", with an optional video per set).
 - `BackHeader` — the chevron back-link page header.
 
 ## Rules

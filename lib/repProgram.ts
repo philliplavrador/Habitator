@@ -15,7 +15,7 @@
 // independently. The table name comes from the (internal, non-user) config, so
 // it's safe to inline into the SQL; all real values are bound parameters.
 
-import { many, one, run } from './db';
+import { many, one, run, tx } from './db';
 import { nowISO, todayISO } from './dates';
 import { attemptStreak } from './analytics';
 import type { RepProgramConfig, RepProgramState, RepSession } from './types';
@@ -47,14 +47,27 @@ export interface RepProgram {
     id: number,
     reps: number[]
   ): Promise<RepSession | undefined>;
-  /** Delete a row; returns the removed row (so callers can clean up its video). */
+  /** Delete a row; returns the removed row (so callers can clean up its videos). */
   remove(userId: number, id: number): Promise<RepSession | undefined>;
+  /** Set/replace the whole-workout video (the single `video` column). */
   setVideo(
     userId: number,
     id: number,
     filename: string
   ): Promise<RepSession | undefined>;
   clearVideo(userId: number, id: number): Promise<RepSession | undefined>;
+  /** Set/replace the video for one set (0-based; caller validates the range). */
+  setSetVideo(
+    userId: number,
+    id: number,
+    set: number,
+    filename: string
+  ): Promise<RepSession | undefined>;
+  clearSetVideo(
+    userId: number,
+    id: number,
+    set: number
+  ): Promise<RepSession | undefined>;
 }
 
 export function createRepProgram(config: RepProgramConfig): RepProgram {
@@ -76,6 +89,7 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
       reps: string;
       completed: number;
       video: string | null;
+      videos: string | null;
       created_at: string;
     };
     return {
@@ -86,8 +100,25 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
       reps: JSON.parse(r.reps) as number[],
       completed: r.completed === 1,
       video: r.video ?? null,
+      videos: hydrateSetVideos(r.videos),
       created_at: r.created_at,
     };
+  }
+
+  // Per-set videos are JSON-in-TEXT (like target/reps) — a nullable filename per
+  // set. NULL/absent/garbage all normalize to a full-length array of nulls so
+  // callers can always index `videos[set]` for 0..sets-1.
+  function hydrateSetVideos(raw: string | null): (string | null)[] {
+    let parsed: unknown = null;
+    try {
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      parsed = null;
+    }
+    const arr = Array.isArray(parsed) ? parsed : [];
+    return Array.from({ length: config.sets }, (_, i) =>
+      typeof arr[i] === 'string' ? (arr[i] as string) : null
+    );
   }
 
   const forDay = (day: number) => targetForDay(config, day);
@@ -245,6 +276,45 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     return get(userId, id);
   }
 
+  // Per-set videos share ONE JSON array column, so setting/clearing a single
+  // slot is a read-modify-write of the whole array. That must be atomic per row:
+  // do the SELECT … FOR UPDATE + UPDATE inside one transaction so two concurrent
+  // per-set writes (e.g. the owner uploading Set 1 on their phone and Set 2 on
+  // desktop) can't both read the same array and clobber each other's slot (which
+  // would drop one filename from the DB and orphan its file). The lock serializes
+  // them; the second write sees the first's committed array.
+  async function writeSetVideo(
+    userId: number,
+    id: number,
+    set: number,
+    filename: string | null
+  ): Promise<RepSession | undefined> {
+    if (set < 0 || set >= config.sets) return undefined;
+    return tx(async (client) => {
+      const locked = await client.query(
+        `SELECT * FROM ${t} WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+        [id, userId]
+      );
+      if (locked.rows.length === 0) return undefined;
+      const videos = [...hydrate(locked.rows[0]).videos];
+      videos[set] = filename;
+      const updated = await client.query(
+        `UPDATE ${t} SET videos = $1 WHERE id = $2 AND user_id = $3 RETURNING *`,
+        [JSON.stringify(videos), id, userId]
+      );
+      return hydrate(updated.rows[0]);
+    });
+  }
+
+  const setSetVideo = (
+    userId: number,
+    id: number,
+    set: number,
+    filename: string
+  ) => writeSetVideo(userId, id, set, filename);
+  const clearSetVideo = (userId: number, id: number, set: number) =>
+    writeSetVideo(userId, id, set, null);
+
   return {
     config,
     targetForDay: forDay,
@@ -256,5 +326,7 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     remove,
     setVideo,
     clearVideo,
+    setSetVideo,
+    clearSetVideo,
   };
 }
