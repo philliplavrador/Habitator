@@ -161,11 +161,18 @@ export default function GuidedWorkout({
       return;
     }
     const use = nextFacing ?? facing;
+    const video = { facingMode: use, width: { ideal: 1280 }, height: { ideal: 720 } };
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: use, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
+      let stream: MediaStream;
+      try {
+        // Record sound alongside the video…
+        stream = await navigator.mediaDevices.getUserMedia({ video, audio: true });
+      } catch {
+        // …but if the mic is denied or there isn't one, fall back to video-only
+        // so the recording still works (a NotAllowedError on the camera itself
+        // rejects again here and drops to the outer catch → error state).
+        stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+      }
       // Unmounted while the camera was opening: the unmount cleanup already ran
       // (with streamRef still null), so stop these tracks here or the camera
       // would stay live on a dead instance until the page is closed.
@@ -208,6 +215,7 @@ export default function GuidedWorkout({
       recorder = new MediaRecorder(stream, {
         ...(mimeType ? { mimeType } : {}),
         videoBitsPerSecond: 1_200_000,
+        audioBitsPerSecond: 128_000, // ignored if the stream has no audio track
       });
     } catch {
       setErrorMsg('Recording failed to start. Use “Type reps” instead.');
