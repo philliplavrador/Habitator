@@ -83,14 +83,19 @@ Regenerate the PWA icons (white check on the accent) with
 | `PGSSL`             | no       | `disable` / `require`; auto by default (off for localhost + Railway internal). |
 | `DATABASE_PATH`     | migration | Path to the OLD SQLite file to import once on first boot (see Deploy).         |
 | `DATA_DIR`          | prod     | Base dir for app files; videos go in `<DATA_DIR>/uploads/`. Defaults near `DATABASE_PATH`. |
-| `TZ`                | prod     | Your timezone (e.g. `America/New_York`), so "today" = your local day.          |
+| `TZ`                | no       | First-paint timezone fallback only (see below). Not required — the zone is auto-detected in the browser. |
 
 Generate a secret: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 
-> **Why `TZ`?** The app computes the current day on the server. Railway hosts run
-> in **UTC**, so without `TZ` set, "today" flips at UTC midnight — which can be hours
-> off from your local day. Set `TZ` to your IANA timezone name and the day lines up.
-> Local dev already uses your machine's timezone.
+> **Timezone is automatic — you don't need to set `TZ`.** The owner's IANA zone
+> is detected in the browser (`<TimezoneSync>`), saved to a `tz` cookie, and read
+> back on the server (`lib/tz.ts`); every date helper (`lib/dates.ts`) takes that
+> zone explicitly, so server and client always agree on "today" no matter where
+> the server runs. `TZ` is used only as the fallback for the **very first request**
+> of a fresh session, before the cookie exists. Railway hosts default to UTC, so
+> if you want that first paint to already match your local day, set `TZ` to your
+> IANA zone (e.g. `America/New_York`); otherwise the first paint is UTC and the
+> client corrects it within a tick. Local dev already uses your machine's zone.
 
 ---
 
@@ -170,22 +175,41 @@ the Today screen. Use it any time to pull a backup, independent of the hosting s
 middleware.ts            # per-user session gate (verifies the signed cookie)
 app/
   layout.tsx             # shell + PWA meta
+  template.tsx           # mounts <TimezoneSync>
   page.tsx               # Today screen
   login/page.tsx         # username + password (+ registration code)
   habits/new, [id], [id]/edit
+  fasts/, pushups/, pullups/, japanese/, insights/   # per-domain screens
   api/login, logout, habits, entries, fasts, pushups, pullups, anki, export
 lib/
-  db.ts                  # Postgres pool + schema + query helpers (async)
+  db.ts                  # Postgres pool + schema + query helpers (many/one/run/tx)
   migrate.ts             # one-time SQLite → Postgres import (under "Fifi")
   session.ts             # signed session tokens (Edge + Node safe)
   auth.ts                # scrypt passwords, users table, current-user helpers
+  apiRoute.ts            # shared auth+parse+error wrapper for API handlers
+  pageContext.ts         # shared server-page setup (user id + resolved tz)
+  habitPage.ts           # data-loading for the habit detail/edit pages
   habits.ts, entries.ts  # typed, user-scoped queries
-  stats.ts               # win rate + streaks
-  dates.ts               # local-day YYYY-MM-DD helpers
-  validate.ts, client.ts
-components/               # HabitRow, AddHabitForm, Heatmap, DateNav, StatCard, …
-public/                  # manifest.webmanifest, icons/
-scripts/gen-icons.mjs    # regenerate the icons
+  fasts.ts, fastStats.ts # fasting queries + duration/streak stats
+  pushups.ts, pullups.ts # rep-session queries per exercise
+  repProgram.ts, repRoute.ts  # shared rep-program model + its API route logic
+  anki.ts                # Japanese Anki (Core 2k/6k) day tracking
+  stats.ts               # win rate + streaks (incl. *Batch helpers for grids)
+  analytics.ts           # cross-domain insights aggregation
+  media.ts               # uploaded-video storage on the data volume
+  dates.ts               # client-safe local-day + timestamp helpers (tz-aware)
+  tz.ts                  # server-side tz resolution from the `tz` cookie
+  types.ts, validate.ts, client.ts
+components/
+  HabitRow, HabitCalendar, AddHabitForm, Heatmap, DateNav, Footer, BottomNav …
+  RepProgramPage, RepProgram{Card,History,Summary}, SessionHeatmap  # rep screens
+  Fast*, Anki*, HeroLogCard                                         # domain cards
+  SummaryCard, ContributionGrid, EditableHistoryRow, BackHeader     # shared bits
+  TimezoneSync.tsx        # writes the `tz` cookie + refreshes (renders nothing)
+  ui/                     # Button, Card, Sheet, SegmentedControl, StatTile, cx …
+  charts/                 # LineTrend, BarBreakdown, ChartCard, theme.ts …
+public/                   # manifest.webmanifest, icons/
+scripts/gen-icons.mjs     # regenerate the icons
 ```
 
 ---

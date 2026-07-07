@@ -63,3 +63,28 @@ store" or "could not read Username", the gh token has likely expired — re-run
 `gh auth setup-git`. As a last resort, push via the GitHub MCP (`push_files` to
 `philliplavrador/Habitator`, branch `main`) and `git reset --hard origin/main`
 to realign local.
+
+## Architecture / where things live
+
+Next.js 14 App Router + TypeScript. Single signed-cookie auth; `middleware.ts`
+gates every route (verifies the session **signature** at the edge — it does not
+decode the uid, so handlers/pages resolve it themselves). Domains: habits,
+fasts, pushups, pullups, japanese/anki.
+
+Layout:
+- `app/` — pages (server components open with `requirePageContext()`) and
+  `app/api/**` route handlers. See **`app/api/CLAUDE.md`**.
+- `lib/` — the data/domain layer (Postgres helpers, domain CRUD, pure
+  aggregation, auth/session/tz). See **`lib/CLAUDE.md`**.
+- `components/` — UI, built on shared `ui/` + `charts/` primitives. See
+  **`components/CLAUDE.md`**.
+
+Two invariants worth repeating (details in `lib/CLAUDE.md`):
+- **`user_id`-scoping** — every domain query is scoped to the logged-in user;
+  the middleware does not decode the uid, so per-handler `getCurrentUserId()` /
+  `requireUserId()` is required, and `entries` upserts on `(habit_id, date)`,
+  not `user_id`.
+- **Migration fidelity** — the store is **PostgreSQL** now. Any `better-sqlite3`
+  / `lib/migrate.ts` code is the **one-time** SQLite→Postgres importer (guarded
+  by `app_meta.sqlite_migrated`), not the live store — don't delete it, and keep
+  `0/1` INTEGER flags and JSON-in-TEXT columns verbatim (never boolean/jsonb).
