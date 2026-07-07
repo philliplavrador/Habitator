@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
 import HabitRow from './HabitRow';
 import ProgressRing from './ProgressRing';
 import CountUp from './ui/CountUp';
@@ -22,6 +23,49 @@ interface Props {
 }
 
 const MILESTONES = [7, 30, 100];
+
+// Row motion. `layout="position"` is what slides survivors when a row leaves or
+// joins a zone; the enter/exit variants use opacity + scale ONLY (never x/y),
+// which would fight `layout`'s own translate. Reduced motion is handled globally
+// by <MotionConfig reducedMotion="user"> (Providers.tsx), so no local gate.
+const listSpring = { type: 'spring', stiffness: 500, damping: 40 } as const;
+const rowTransition = {
+  layout: listSpring,
+  opacity: { duration: 0.18 },
+  scale: { duration: 0.18 },
+};
+
+/**
+ * One habit row, wrapped so it can animate between the active and completed
+ * zones. The wrapper is a roleless `motion.div` (not `motion.li`) because
+ * HabitRow already renders the `<li>` — a `<li>` wrapper would nest `<li>` in
+ * `<li>` and warn. Completed rows recede to 0.7 opacity via `animate` (not a
+ * className) so the whole row, ✓ included, dims without touching its hit area.
+ */
+function MotionRow({
+  view,
+  zone,
+  busy,
+  onSetStatus,
+}: {
+  view: HabitDayView;
+  zone: 'active' | 'completed';
+  busy: boolean;
+  onSetStatus: (next: EntryStatus | null) => void;
+}) {
+  const rest = zone === 'completed' ? 0.7 : 1;
+  return (
+    <motion.div
+      layout="position"
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: rest, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      transition={rowTransition}
+    >
+      <HabitRow view={view} busy={busy} onSetStatus={onSetStatus} />
+    </motion.div>
+  );
+}
 
 export default function TodayClient({ date, initialItems, widgets }: Props) {
   const router = useRouter();
@@ -52,6 +96,13 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   const total = items.length;
   const progress = total > 0 ? doneCount / total : 0;
   const allDone = total > 0 && doneCount === total;
+
+  // Presentation-only split (never a source of truth): completed habits sink to
+  // a scroll-down "Completed" zone; a `fail` or untouched habit stays active.
+  // Derived from the optimistic `items`, so a row leaves the active list the
+  // instant it's tapped, before the server round-trip.
+  const activeItems = items.filter((i) => i.status !== 'pass');
+  const completedItems = items.filter((i) => i.status === 'pass');
 
   // ── Perfect-day celebration ──
   // Fire when the day flips from not-all-done to all-done. Initialize the ref to
@@ -96,6 +147,12 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   }, [initialItems, milestone, show]);
 
   async function handleSet(habitId: number, next: EntryStatus | null) {
+    // Same-habit concurrency guard. A row leaving the active zone stays in the
+    // DOM as an AnimatePresence exiting child with its pre-tap props frozen — so
+    // its buttons briefly render enabled (busy=false) even though a write is in
+    // flight. Guard at the source so a stray tap on that ghost can't start a
+    // second, racing write. (Previously the row re-rendered in place as busy.)
+    if (pending.current.has(habitId)) return;
     const prevStatus =
       items.find((i) => i.habit.id === habitId)?.status ?? null;
     pending.current.add(habitId);
@@ -156,22 +213,97 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
         </p>
       )}
 
-      {items.length > 0 && (
-        <ul className="flex flex-col gap-2">
-          {items.map((view) => (
-            <HabitRow
-              key={view.habit.id}
-              view={view}
-              busy={busyId === view.habit.id}
-              onSetStatus={(next) => handleSet(view.habit.id, next)}
-            />
-          ))}
-        </ul>
+      {/* Active + completed zone. key={date} remounts the subtree on date change
+          for a clean instant swap (no cross-day exit/enter burst); the items /
+          pending / celebration refs live on TodayClient and are untouched. */}
+      {total > 0 && (
+        <div key={date}>
+          {/* Active habits — role="list" restores the semantics the <ul>→<div>
+              swap drops. Kept mounted while total>0 (never gated on its own
+              length) so completing the LAST active habit still plays its exit. */}
+          <motion.div
+            role="list"
+            aria-label={activeItems.length > 0 ? 'Habits to do' : undefined}
+            className="flex flex-col gap-2"
+            layout="position"
+          >
+            <AnimatePresence initial={false}>
+              {activeItems.map((view) => (
+                <MotionRow
+                  key={view.habit.id}
+                  view={view}
+                  zone="active"
+                  busy={busyId === view.habit.id}
+                  onSetStatus={(next) => handleSet(view.habit.id, next)}
+                />
+              ))}
+            </AnimatePresence>
+          </motion.div>
+
+          {activeItems.length === 0 && (
+            <p className="px-1 pt-1 text-sm text-text-muted">
+              Nothing left to check off.
+            </p>
+          )}
+
+          {/* Custom-habit summary widgets — actionable, still-to-do work, so they
+              stay in the active zone above the completed archive. */}
+          {widgets && (
+            <motion.div layout="position" className="mt-2">
+              {widgets}
+            </motion.div>
+          )}
+
+          {/* Completed archive — the whole block fades/slides in when the first
+              habit is completed and out when the last is un-completed. */}
+          <AnimatePresence initial={false}>
+            {completedItems.length > 0 && (
+              <motion.section
+                key="completed"
+                layout="position"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ layout: listSpring, opacity: { duration: 0.2 } }}
+                className="mt-8"
+              >
+                <header className="mb-3 flex items-center gap-3 px-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    Completed
+                  </span>
+                  <span className="text-xs tabular-nums text-text-muted">
+                    {completedItems.length}
+                  </span>
+                  <span aria-hidden className="h-px flex-1 bg-border" />
+                </header>
+                <motion.div
+                  role="list"
+                  aria-label="Completed habits"
+                  className="flex flex-col gap-2"
+                  layout="position"
+                >
+                  <AnimatePresence initial={false}>
+                    {completedItems.map((view) => (
+                      <MotionRow
+                        key={view.habit.id}
+                        view={view}
+                        zone="completed"
+                        busy={busyId === view.habit.id}
+                        onSetStatus={(next) => handleSet(view.habit.id, next)}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
+              </motion.section>
+            )}
+          </AnimatePresence>
+        </div>
       )}
 
-      {/* Custom-habit summary widgets flow after the habit rows (each card
-          self-spaces via its own bottom margin). */}
-      {widgets && <div className="mt-2">{widgets}</div>}
+      {/* Widgets when there are no habits at all — mutually exclusive with the
+          in-zone widget site above (which requires total>0), so widgets never
+          double-render. */}
+      {total === 0 && widgets && <div className="mt-2">{widgets}</div>}
     </div>
   );
 }
