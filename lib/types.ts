@@ -2,11 +2,22 @@
 
 export type EntryStatus = 'pass' | 'fail';
 
+/**
+ * Two kinds of habit, with opposite default semantics:
+ * - `build` — a thing to DO every day (e.g. take meds). Each day starts unchecked
+ *   and you actively mark it `pass`. Blank days are exceptions (skipped).
+ * - `quit`  — a thing to AVOID (e.g. no social media before noon). Every day is
+ *   clean by default; the ONLY recorded entry is an explicit `fail` (a slip).
+ *   Blank in-range days count as clean, and the streak is the run of clean days.
+ */
+export type HabitKind = 'build' | 'quit';
+
 export interface Habit {
   id: number;
   name: string;
   details: string;
   exceptions: string;
+  kind: HabitKind; // 'build' | 'quit' — see HabitKind
   start_date: string; // YYYY-MM-DD
   sort_order: number;
   archived: number; // 0 | 1 (SQLite has no boolean)
@@ -43,6 +54,7 @@ export interface HabitInput {
   name: string;
   details: string;
   exceptions: string;
+  kind: HabitKind;
   start_date: string;
 }
 

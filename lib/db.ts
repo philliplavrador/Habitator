@@ -129,6 +129,10 @@ CREATE TABLE IF NOT EXISTS app_meta (
 -- alongside the existing single video column (the whole-workout recording).
 ALTER TABLE pushup_sessions ADD COLUMN IF NOT EXISTS videos TEXT;
 ALTER TABLE pullup_sessions ADD COLUMN IF NOT EXISTS videos TEXT;
+-- Habit kind: 'build' (do it daily, check off) vs 'quit' (avoid it, only mark
+-- slips). Defaults to 'build' so every pre-existing/migrated habit keeps its
+-- current meaning; the app layer validates the value (see lib/validate.ts).
+ALTER TABLE habits ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'build';
 `;
 
 // Arbitrary constant identifying the schema/migration advisory lock. Any two

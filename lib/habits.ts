@@ -43,13 +43,14 @@ export async function createHabit(
   );
   const maxOrder = row?.maxorder ?? -1;
   const created = await one<Habit>(
-    `INSERT INTO habits (user_id, name, details, exceptions, start_date, sort_order, archived, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 0, $7) RETURNING *`,
+    `INSERT INTO habits (user_id, name, details, exceptions, kind, start_date, sort_order, archived, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8) RETURNING *`,
     [
       userId,
       input.name,
       input.details,
       input.exceptions,
+      input.kind,
       input.start_date,
       maxOrder + 1,
       new Date().toISOString(),
@@ -65,9 +66,17 @@ export async function updateHabit(
   input: HabitInput
 ): Promise<Habit | undefined> {
   const changed = await run(
-    `UPDATE habits SET name = $1, details = $2, exceptions = $3, start_date = $4
-     WHERE id = $5 AND user_id = $6`,
-    [input.name, input.details, input.exceptions, input.start_date, id, userId]
+    `UPDATE habits SET name = $1, details = $2, exceptions = $3, kind = $4, start_date = $5
+     WHERE id = $6 AND user_id = $7`,
+    [
+      input.name,
+      input.details,
+      input.exceptions,
+      input.kind,
+      input.start_date,
+      id,
+      userId,
+    ]
   );
   if (changed === 0) return undefined;
   return getHabit(userId, id);

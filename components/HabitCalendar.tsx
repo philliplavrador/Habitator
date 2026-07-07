@@ -7,7 +7,7 @@ import Sheet from './ui/Sheet';
 import { useToast } from './ui/toast';
 import { apiClearEntry, apiSetEntry } from '@/lib/client';
 import { addDays, compareISO, formatHuman, relativeLabel, weekdayOf } from '@/lib/dates';
-import type { EntryStatus } from '@/lib/types';
+import type { EntryStatus, HabitKind } from '@/lib/types';
 
 interface Props {
   habitId: number;
@@ -15,6 +15,8 @@ interface Props {
   initialStatus: Record<string, EntryStatus>;
   startDate: string;
   today: string;
+  /** Habit kind — a `quit` habit edits slips only (see below). */
+  kind?: HabitKind;
 }
 
 type Choice = EntryStatus | 'clear';
@@ -59,7 +61,14 @@ function monthCells(month: string): (string | null)[] {
  * writing through the same /api/entries endpoints the Today screen uses.
  * Future days and days before the start date are disabled to match the API.
  */
-export default function HabitCalendar({ habitId, initialStatus, startDate, today }: Props) {
+export default function HabitCalendar({
+  habitId,
+  initialStatus,
+  startDate,
+  today,
+  kind = 'build',
+}: Props) {
+  const isQuit = kind === 'quit';
   const router = useRouter();
   const { show } = useToast();
   const [statuses, setStatuses] = useState<Map<string, EntryStatus>>(
@@ -167,9 +176,12 @@ export default function HabitCalendar({ habitId, initialStatus, startDate, today
           const day = Number(date.slice(8, 10));
 
           let tone: string;
-          if (status === 'pass') tone = 'bg-pass text-black font-semibold';
-          else if (status === 'fail') tone = 'bg-fail text-white font-semibold';
+          if (status === 'fail') tone = 'bg-fail text-white font-semibold';
+          else if (status === 'pass') tone = 'bg-pass text-black font-semibold';
           else if (disabled) tone = 'bg-transparent text-text-faint/50';
+          // For a quit habit, an in-range blank day is a clean win, so tint it
+          // green (subtly) instead of the neutral "no data" grey.
+          else if (isQuit) tone = 'bg-pass/15 text-pass active:bg-pass/25';
           else tone = 'bg-surface2 text-text-secondary active:bg-surface3';
 
           return (
@@ -198,11 +210,18 @@ export default function HabitCalendar({ habitId, initialStatus, startDate, today
         </p>
         <SegmentedControl<Choice>
           aria-label="Set status"
-          options={[
-            { value: 'pass', label: '✓ Pass' },
-            { value: 'fail', label: '✗ Fail' },
-            { value: 'clear', label: 'Clear' },
-          ]}
+          options={
+            isQuit
+              ? [
+                  { value: 'fail', label: '✗ Slipped' },
+                  { value: 'clear', label: '✓ Clean' },
+                ]
+              : [
+                  { value: 'pass', label: '✓ Pass' },
+                  { value: 'fail', label: '✗ Fail' },
+                  { value: 'clear', label: 'Clear' },
+                ]
+          }
           value={selectedStatus}
           onChange={(v) => selected && handleSet(selected, v)}
         />

@@ -25,8 +25,9 @@ export default async function HabitDetailPage({
 }) {
   const { userId, today } = await requirePageContext();
   const habit = await loadHabitOr404(params.id, userId);
+  const isQuit = habit.kind === 'quit';
 
-  const stats = await getHabitStats(userId, habit.id);
+  const stats = await getHabitStats(userId, habit.id, today);
 
   const statusByDate: Record<string, EntryStatus> = {};
   for (const e of await listEntriesForHabit(userId, habit.id)) {
@@ -91,9 +92,12 @@ export default async function HabitDetailPage({
       </p>
 
       <section className="mb-3 grid grid-cols-3 gap-2">
-        <StatTile label="Completion" value={formatRate(stats.completionRate)} />
         <StatTile
-          label="Current streak"
+          label={isQuit ? 'Clean rate' : 'Completion'}
+          value={formatRate(stats.completionRate)}
+        />
+        <StatTile
+          label={isQuit ? 'Clean streak' : 'Current streak'}
           value={String(stats.currentStreak)}
           accent="pass"
         />
@@ -101,8 +105,16 @@ export default async function HabitDetailPage({
       </section>
 
       <section className="mb-6 grid grid-cols-2 gap-2">
-        <StatTile label="Passes" value={String(stats.passes)} accent="pass" />
-        <StatTile label="Fails" value={String(stats.fails)} accent="fail" />
+        <StatTile
+          label={isQuit ? 'Clean days' : 'Passes'}
+          value={String(stats.passes)}
+          accent="pass"
+        />
+        <StatTile
+          label={isQuit ? 'Slips' : 'Fails'}
+          value={String(stats.fails)}
+          accent="fail"
+        />
       </section>
 
       <section className="mb-6">
@@ -113,6 +125,7 @@ export default async function HabitDetailPage({
           statusByDate={statusByDate}
           startDate={habit.start_date}
           today={today}
+          kind={habit.kind}
         />
       </section>
 
@@ -126,14 +139,17 @@ export default async function HabitDetailPage({
             initialStatus={statusByDate}
             startDate={habit.start_date}
             today={today}
+            kind={habit.kind}
           />
         </div>
         <p className="mt-2 text-xs text-text-muted">
-          Tap any day to mark it pass, fail, or clear it back to an exception.
+          {isQuit
+            ? 'Days are clean by default — tap a day to mark a slip, or clear it back to clean.'
+            : 'Tap any day to mark it pass, fail, or clear it back to an exception.'}
         </p>
       </section>
 
-      {since.length > 0 && (
+      {!isQuit && since.length > 0 && (
         <section className="mb-6 flex flex-col gap-3">
           <ChartCard title="Completion trend" subtitle="14-day rolling win rate">
             <LineTrend

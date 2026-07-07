@@ -51,6 +51,7 @@ function coerceInt(v: unknown, min: number, max: number): number | null {
  * Validate/normalize a habit create/update payload.
  * - name is required (trimmed, non-empty, capped length)
  * - details/exceptions default to ''
+ * - kind defaults to 'build'; only 'build' | 'quit' are accepted
  * - start_date defaults to today (in the owner's `tz`); must be a valid YYYY-MM-DD
  */
 export function parseHabitInput(body: unknown, tz: string): ParseResult<HabitInput> {
@@ -64,13 +65,19 @@ export function parseHabitInput(body: unknown, tz: string): ParseResult<HabitInp
   const details = asString(b.details).trim();
   const exceptions = asString(b.exceptions).trim();
 
+  const rawKind = asString(b.kind).trim();
+  const kind = rawKind === '' ? 'build' : rawKind;
+  if (kind !== 'build' && kind !== 'quit') {
+    return { ok: false, error: "kind must be 'build' or 'quit'." };
+  }
+
   const rawStart = asString(b.start_date).trim();
   const start_date = rawStart === '' ? todayISO(tz) : rawStart;
   if (!isValidISODate(start_date)) {
     return { ok: false, error: 'start_date must be a valid YYYY-MM-DD date.' };
   }
 
-  return { ok: true, value: { name, details, exceptions, start_date } };
+  return { ok: true, value: { name, details, exceptions, kind, start_date } };
 }
 
 // ── Fasting ─────────────────────────────────────────────────────────

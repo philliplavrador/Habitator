@@ -23,7 +23,7 @@ export default async function InsightsPage() {
   const { userId, tz, today } = await requirePageContext();
 
   const habits = await listActiveHabits(userId);
-  const statsByHabit = await getHabitStatsBatch(userId, habits);
+  const statsByHabit = await getHabitStatsBatch(userId, habits, today);
   const rows = habits
     .map((habit) => ({ habit, stats: statsByHabit.get(habit.id)! }))
     .sort((a, b) => {
@@ -33,24 +33,37 @@ export default async function InsightsPage() {
     return b.stats.currentStreak - a.stats.currentStreak;
   });
 
-  const passes = rows.reduce((s, r) => s + r.stats.passes, 0);
-  const fails = rows.reduce((s, r) => s + r.stats.fails, 0);
+  // Overall win rate is "how often you did your daily things", so it's over
+  // build habits only — a quit habit's clean days accumulate every calendar day
+  // and would otherwise pin the rate near 100%. Best streak celebrates any kind
+  // (a long clean run is a real achievement).
+  const buildRows = rows.filter((r) => r.habit.kind !== 'quit');
+  const passes = buildRows.reduce((s, r) => s + r.stats.passes, 0);
+  const fails = buildRows.reduce((s, r) => s + r.stats.fails, 0);
   const overall = passes + fails === 0 ? null : passes / (passes + fails);
   const bestStreak = rows.reduce((m, r) => Math.max(m, r.stats.currentStreak), 0);
 
   // Cross-habit analytics.
+  const allHabits = await listAllHabits(userId);
   const allEntries = await listAllEntries(userId);
-  const perfect = perfectDays(await listAllHabits(userId), allEntries, today);
-  const cumulative = cumulativePasses(allEntries).map((p) => ({
+  const perfect = perfectDays(allHabits, allEntries, today);
+  // The win-rate charts below are about DOING things, so they only make sense
+  // for build habits — a quit habit records slips only (no passes), which would
+  // otherwise drag every rate down. Restrict them to build-habit entries.
+  const quitIds = new Set(
+    allHabits.filter((h) => h.kind === 'quit').map((h) => h.id)
+  );
+  const buildEntries = allEntries.filter((e) => !quitIds.has(e.habit_id));
+  const cumulative = cumulativePasses(buildEntries).map((p) => ({
     label: p.date.slice(5),
     total: p.total,
   }));
-  const dow = dayOfWeekBreakdown(allEntries).map((d) => ({
+  const dow = dayOfWeekBreakdown(buildEntries).map((d) => ({
     ...d,
     fill: weekdayColor(d.rate),
   }));
   const byDay = new Map<string, { p: number; f: number }>();
-  for (const e of allEntries) {
+  for (const e of buildEntries) {
     const d = byDay.get(e.date) ?? { p: 0, f: 0 };
     if (e.status === 'pass') d.p++;
     else d.f++;

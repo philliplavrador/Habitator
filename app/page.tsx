@@ -38,7 +38,7 @@ export default async function TodayPage({
   const activeHabits = (await listActiveHabits(userId)).filter(
     (h) => compareISO(h.start_date, selected) <= 0
   );
-  const streaks = await getCurrentStreaksBatch(userId, activeHabits);
+  const streaks = await getCurrentStreaksBatch(userId, activeHabits, today);
   const items: HabitDayView[] = activeHabits.map((habit) => ({
     habit,
     status: statusMap.get(habit.id) ?? null,

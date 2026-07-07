@@ -9,9 +9,10 @@ import {
   apiUpdateHabit,
 } from '@/lib/client';
 import { todayISO } from '@/lib/dates';
-import type { Habit } from '@/lib/types';
+import type { Habit, HabitKind } from '@/lib/types';
 import Button from '@/components/ui/Button';
 import { Field, Textarea } from '@/components/ui/Field';
+import SegmentedControl from '@/components/ui/SegmentedControl';
 import { useConfirm } from '@/components/ui/confirm';
 
 interface Props {
@@ -27,6 +28,7 @@ export default function AddHabitForm({ habit, tz }: Props) {
   const editing = Boolean(habit);
 
   const [name, setName] = useState(habit?.name ?? '');
+  const [kind, setKind] = useState<HabitKind>(habit?.kind ?? 'build');
   const [details, setDetails] = useState(habit?.details ?? '');
   const [exceptions, setExceptions] = useState(habit?.exceptions ?? '');
   // Default the new-habit start date to today, but compute it on the client only
@@ -57,6 +59,7 @@ export default function AddHabitForm({ habit, tz }: Props) {
       name: name.trim(),
       details: details.trim(),
       exceptions: exceptions.trim(),
+      kind,
       start_date: startDate,
     };
     try {
@@ -102,13 +105,35 @@ export default function AddHabitForm({ habit, tz }: Props) {
     }
   }
 
+  const isQuit = kind === 'quit';
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <div>
+        <span className="mb-1.5 block text-sm font-medium text-text-secondary">
+          Type
+        </span>
+        <SegmentedControl<HabitKind>
+          aria-label="Habit type"
+          options={[
+            { value: 'build', label: 'Do daily' },
+            { value: 'quit', label: 'Quit' },
+          ]}
+          value={kind}
+          onChange={setKind}
+        />
+        <p className="mt-1.5 text-xs text-text-muted">
+          {isQuit
+            ? 'Something to avoid (e.g. no social media before noon). Every day counts as clean — you only tap the days you slip.'
+            : 'Something to get done every day (e.g. take meds). Check it off each day to keep your streak.'}
+        </p>
+      </div>
+
       <Field
         label="Name"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="e.g. Morning run"
+        placeholder={isQuit ? 'e.g. No social media before noon' : 'e.g. Morning run'}
         autoFocus={!editing}
         maxLength={200}
       />
@@ -117,7 +142,7 @@ export default function AddHabitForm({ habit, tz }: Props) {
         label="Details"
         value={details}
         onChange={(e) => setDetails(e.target.value)}
-        placeholder="What do you have to do?"
+        placeholder={isQuit ? 'What are you avoiding, and why?' : 'What do you have to do?'}
       />
 
       <Textarea

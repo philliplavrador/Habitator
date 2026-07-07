@@ -92,17 +92,26 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
     );
   }, [initialItems]);
 
-  const doneCount = items.filter((i) => i.status === 'pass').length;
-  const total = items.length;
+  // Two kinds of habit live in `items`. Build ("do daily") habits drive the
+  // progress ring and the active/completed split. Quit ("avoiding") habits are
+  // constraints, not tasks: they never enter the ring — they get their own
+  // "Avoiding" section and only leave "clean" when explicitly marked as a slip.
+  const buildItems = items.filter((i) => i.habit.kind !== 'quit');
+  const quitItems = items.filter((i) => i.habit.kind === 'quit');
+
+  const doneCount = buildItems.filter((i) => i.status === 'pass').length;
+  const total = buildItems.length;
   const progress = total > 0 ? doneCount / total : 0;
   const allDone = total > 0 && doneCount === total;
 
   // Presentation-only split (never a source of truth): completed habits sink to
   // a scroll-down "Completed" zone; a `fail` or untouched habit stays active.
-  // Derived from the optimistic `items`, so a row leaves the active list the
-  // instant it's tapped, before the server round-trip.
-  const activeItems = items.filter((i) => i.status !== 'pass');
-  const completedItems = items.filter((i) => i.status === 'pass');
+  // Derived from the optimistic `buildItems`, so a row leaves the active list
+  // the instant it's tapped, before the server round-trip.
+  const activeItems = buildItems.filter((i) => i.status !== 'pass');
+  const completedItems = buildItems.filter((i) => i.status === 'pass');
+
+  const nothingToShow = total === 0 && quitItems.length === 0 && !widgets;
 
   // ── Perfect-day celebration ──
   // Fire when the day flips from not-all-done to all-done. Initialize the ref to
@@ -203,7 +212,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
         </div>
       )}
 
-      {total === 0 && !widgets && (
+      {nothingToShow && (
         <p className="mb-3 text-sm text-text-muted">No habits for this day yet.</p>
       )}
 
@@ -213,49 +222,88 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
         </p>
       )}
 
-      {/* Active + completed zone. key={date} remounts the subtree on date change
-          for a clean instant swap (no cross-day exit/enter burst); the items /
-          pending / celebration refs live on TodayClient and are untouched. */}
-      {total > 0 && (
+      {/* key={date} remounts the subtree on date change for a clean instant swap
+          (no cross-day exit/enter burst); the items / pending / celebration refs
+          live on TodayClient and are untouched. */}
+      {!nothingToShow && (
         <div key={date}>
-          {/* Active habits — role="list" restores the semantics the <ul>→<div>
-              swap drops. Kept mounted while total>0 (never gated on its own
-              length) so completing the LAST active habit still plays its exit. */}
-          <motion.div
-            role="list"
-            aria-label={activeItems.length > 0 ? 'Habits to do' : undefined}
-            className="flex flex-col gap-2"
-            layout="position"
-          >
-            <AnimatePresence initial={false}>
-              {activeItems.map((view) => (
-                <MotionRow
-                  key={view.habit.id}
-                  view={view}
-                  zone="active"
-                  busy={busyId === view.habit.id}
-                  onSetStatus={(next) => handleSet(view.habit.id, next)}
-                />
-              ))}
-            </AnimatePresence>
-          </motion.div>
+          {/* ── Build ("do daily") habits: active zone ── */}
+          {total > 0 && (
+            <>
+              {/* role="list" restores the semantics the <ul>→<div> swap drops.
+                  Kept mounted while total>0 (never gated on its own length) so
+                  completing the LAST active habit still plays its exit. */}
+              <motion.div
+                role="list"
+                aria-label={activeItems.length > 0 ? 'Habits to do' : undefined}
+                className="flex flex-col gap-2"
+                layout="position"
+              >
+                <AnimatePresence initial={false}>
+                  {activeItems.map((view) => (
+                    <MotionRow
+                      key={view.habit.id}
+                      view={view}
+                      zone="active"
+                      busy={busyId === view.habit.id}
+                      onSetStatus={(next) => handleSet(view.habit.id, next)}
+                    />
+                  ))}
+                </AnimatePresence>
+              </motion.div>
 
-          {activeItems.length === 0 && (
-            <p className="px-1 pt-1 text-sm text-text-muted">
-              Nothing left to check off.
-            </p>
+              {activeItems.length === 0 && (
+                <p className="px-1 pt-1 text-sm text-text-muted">
+                  Nothing left to check off.
+                </p>
+              )}
+            </>
           )}
 
           {/* Custom-habit summary widgets — actionable, still-to-do work, so they
-              stay in the active zone above the completed archive. */}
+              stay above the avoiding/completed sections. */}
           {widgets && (
             <motion.div layout="position" className="mt-2">
               {widgets}
             </motion.div>
           )}
 
+          {/* ── Quit ("avoiding") habits: their own section, out of the ring.
+              Clean by default; each row only fails when explicitly slipped. ── */}
+          {quitItems.length > 0 && (
+            <section className="mt-8">
+              <header className="mb-3 flex items-center gap-3 px-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  Avoiding
+                </span>
+                <span className="text-xs tabular-nums text-text-muted">
+                  {quitItems.length}
+                </span>
+                <span aria-hidden className="h-px flex-1 bg-border" />
+              </header>
+              <motion.div
+                role="list"
+                aria-label="Habits to avoid"
+                className="flex flex-col gap-2"
+                layout="position"
+              >
+                <AnimatePresence initial={false}>
+                  {quitItems.map((view) => (
+                    <MotionRow
+                      key={view.habit.id}
+                      view={view}
+                      zone="active"
+                      busy={busyId === view.habit.id}
+                      onSetStatus={(next) => handleSet(view.habit.id, next)}
+                    />
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            </section>
+          )}
+
           {/* Completed archive — the whole block fades/slides in when the first
-              habit is completed and out when the last is un-completed. */}
+              build habit is completed and out when the last is un-completed. */}
           <AnimatePresence initial={false}>
             {completedItems.length > 0 && (
               <motion.section
@@ -299,11 +347,6 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
           </AnimatePresence>
         </div>
       )}
-
-      {/* Widgets when there are no habits at all — mutually exclusive with the
-          in-zone widget site above (which requires total>0), so widgets never
-          double-render. */}
-      {total === 0 && widgets && <div className="mt-2">{widgets}</div>}
     </div>
   );
 }

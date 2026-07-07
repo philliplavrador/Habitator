@@ -10,6 +10,7 @@ import { getCurrentUserId } from '@/lib/auth';
 import { parseId, readJson, unauthorized } from '@/lib/apiRoute';
 import { parseHabitInput } from '@/lib/validate';
 import { getTimezone } from '@/lib/tz';
+import { todayISO } from '@/lib/dates';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,8 @@ export async function GET(
   const habit = await getHabit(userId, id);
   if (!habit) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
 
-  return NextResponse.json({ habit, stats: await getHabitStats(userId, id) });
+  const stats = await getHabitStats(userId, id, todayISO(getTimezone()));
+  return NextResponse.json({ habit, stats });
 }
 
 // PATCH /api/habits/[id]

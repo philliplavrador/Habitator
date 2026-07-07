@@ -14,64 +14,122 @@ interface Props {
 const tap = { scale: 0.86 };
 const spring = { type: 'spring', stiffness: 420, damping: 16 } as const;
 
-export default function HabitRow({ view, busy, onSetStatus }: Props) {
-  const { habit, status, currentStreak } = view;
-
-  const tapPass = () => onSetStatus(status === 'pass' ? null : 'pass');
-  const tapFail = () => onSetStatus(status === 'fail' ? null : 'fail');
-
+/** Shared row shell: the habit name link + an optional sub-line under it. */
+function RowShell({
+  href,
+  name,
+  sub,
+  children,
+}: {
+  href: string;
+  name: string;
+  sub?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <li className="flex items-center gap-3 rounded-card border border-border bg-surface px-3 py-3 shadow-card">
       <div className="min-w-0 flex-1">
         <Link
-          href={`/habits/${habit.id}`}
+          href={href}
           className="block truncate text-[15px] font-medium text-text-primary active:opacity-70"
         >
-          {habit.name}
+          {name}
         </Link>
-        {currentStreak > 0 && (
-          <span className="mt-0.5 inline-block text-xs text-text-muted">
-            🔥 {currentStreak}
-          </span>
-        )}
+        {sub}
       </div>
-
-      <div className="flex shrink-0 items-center gap-2">
-        <motion.button
-          type="button"
-          aria-label="Mark pass"
-          aria-pressed={status === 'pass'}
-          disabled={busy}
-          onClick={tapPass}
-          whileTap={tap}
-          transition={spring}
-          className={[
-            'flex h-11 w-11 items-center justify-center rounded-btn border text-lg disabled:opacity-50',
-            status === 'pass'
-              ? 'border-pass bg-pass text-black shadow-glow-pass'
-              : 'border-border bg-surface2 text-text-muted active:border-pass',
-          ].join(' ')}
-        >
-          ✓
-        </motion.button>
-        <motion.button
-          type="button"
-          aria-label="Mark fail"
-          aria-pressed={status === 'fail'}
-          disabled={busy}
-          onClick={tapFail}
-          whileTap={tap}
-          transition={spring}
-          className={[
-            'flex h-11 w-11 items-center justify-center rounded-btn border text-lg disabled:opacity-50',
-            status === 'fail'
-              ? 'border-fail bg-fail text-white'
-              : 'border-border bg-surface2 text-text-muted active:border-fail',
-          ].join(' ')}
-        >
-          ✗
-        </motion.button>
-      </div>
+      <div className="flex shrink-0 items-center gap-2">{children}</div>
     </li>
+  );
+}
+
+export default function HabitRow({ view, busy, onSetStatus }: Props) {
+  const { habit, status, currentStreak } = view;
+  const href = `/habits/${habit.id}`;
+
+  // ── Quit habit: clean by default; only an explicit slip fails it. ──
+  if (habit.kind === 'quit') {
+    const slipped = status === 'fail';
+    const sub = slipped ? (
+      <span className="mt-0.5 inline-block text-xs font-medium text-fail">
+        Slipped today
+      </span>
+    ) : currentStreak > 0 ? (
+      <span className="mt-0.5 inline-block text-xs text-text-muted">
+        🔥 {currentStreak} clean
+      </span>
+    ) : (
+      <span className="mt-0.5 inline-block text-xs text-text-muted">On track</span>
+    );
+
+    return (
+      <RowShell href={href} name={habit.name} sub={sub}>
+        <motion.button
+          type="button"
+          aria-label={slipped ? 'Undo slip' : 'Mark a slip'}
+          aria-pressed={slipped}
+          disabled={busy}
+          onClick={() => onSetStatus(slipped ? null : 'fail')}
+          whileTap={tap}
+          transition={spring}
+          className={[
+            'flex h-11 items-center justify-center rounded-btn border px-3 text-sm font-semibold disabled:opacity-50',
+            slipped
+              ? 'border-fail bg-fail text-white'
+              : 'border-border bg-surface2 text-text-secondary active:border-fail active:text-fail',
+          ].join(' ')}
+        >
+          {slipped ? 'Undo' : 'I slipped'}
+        </motion.button>
+      </RowShell>
+    );
+  }
+
+  // ── Build habit: check it off each day (pass), or mark an explicit fail. ──
+  const tapPass = () => onSetStatus(status === 'pass' ? null : 'pass');
+  const tapFail = () => onSetStatus(status === 'fail' ? null : 'fail');
+  const sub =
+    currentStreak > 0 ? (
+      <span className="mt-0.5 inline-block text-xs text-text-muted">
+        🔥 {currentStreak}
+      </span>
+    ) : undefined;
+
+  return (
+    <RowShell href={href} name={habit.name} sub={sub}>
+      <motion.button
+        type="button"
+        aria-label="Mark pass"
+        aria-pressed={status === 'pass'}
+        disabled={busy}
+        onClick={tapPass}
+        whileTap={tap}
+        transition={spring}
+        className={[
+          'flex h-11 w-11 items-center justify-center rounded-btn border text-lg disabled:opacity-50',
+          status === 'pass'
+            ? 'border-pass bg-pass text-black shadow-glow-pass'
+            : 'border-border bg-surface2 text-text-muted active:border-pass',
+        ].join(' ')}
+      >
+        ✓
+      </motion.button>
+      <motion.button
+        type="button"
+        aria-label="Mark fail"
+        aria-pressed={status === 'fail'}
+        disabled={busy}
+        onClick={tapFail}
+        whileTap={tap}
+        transition={spring}
+        className={[
+          'flex h-11 w-11 items-center justify-center rounded-btn border text-lg disabled:opacity-50',
+          status === 'fail'
+            ? 'border-fail bg-fail text-white'
+            : 'border-border bg-surface2 text-text-muted active:border-fail',
+        ].join(' ')}
+      >
+        ✗
+      </motion.button>
+    </RowShell>
   );
 }

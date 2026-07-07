@@ -45,10 +45,10 @@ export async function GET() {
   // add the field to this payload together, so an importer can tell what a given
   // dump holds. (version 6 = habits, entries, fasts, pushupSessions,
   // pullupSessions, ankiDays. version 7 added *_sessions.videos — the per-set
-  // video array.)
+  // video array. version 8 added habits.kind — 'build' | 'quit'.)
   const payload = {
     app: 'habitator',
-    version: 7,
+    version: 8,
     exportedAt: new Date().toISOString(),
     habits,
     entries,
