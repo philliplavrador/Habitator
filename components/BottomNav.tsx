@@ -6,17 +6,19 @@ import { motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 
 /**
- * Fixed bottom tab bar — the app's primary navigation. Replaces the old 2-tab
- * top NavTabs. Four destinations; the active pill slides between tabs via a
- * shared-element layoutId (auto-neutralized under reduced motion).
+ * Fixed bottom tab bar — the app's primary navigation. The active pill slides
+ * between tabs via a shared-element layoutId (auto-neutralized under reduced
+ * motion).
+ *
+ * Only genuinely distinct domains get a tab. Pushups/pullups/japanese are just
+ * custom habits, so they're NOT tabs — they live inline on the Today screen as
+ * summary widgets (see app/page.tsx) and are reached via those widgets. Fasting
+ * is the one non-habit domain, so it keeps its own tab.
  */
 const TABS: { href: string; label: string; icon: ReactNode }[] = [
   { href: '/', label: 'Today', icon: <TodayIcon /> },
   { href: '/insights', label: 'Insights', icon: <InsightsIcon /> },
   { href: '/fasts', label: 'Fasting', icon: <FastingIcon /> },
-  { href: '/pushups', label: 'Pushups', icon: <PushupsIcon /> },
-  { href: '/pullups', label: 'Pullups', icon: <PullupsIcon /> },
-  { href: '/japanese', label: 'Japanese', icon: <JapaneseIcon /> },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -98,36 +100,6 @@ function FastingIcon() {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <circle cx="12" cy="13" r="8" />
       <path d="M12 9v4l2.5 2.5M12 2h0M9 2h6" />
-    </svg>
-  );
-}
-
-function PushupsIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M6.5 8v8M17.5 8v8M6.5 12h11M3.5 10v4M20.5 10v4" />
-    </svg>
-  );
-}
-
-// A pull-up bar with hands gripping and a body hanging below.
-function PullupsIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M4 4h16" />
-      <path d="M8 4v3M16 4v3" />
-      <circle cx="12" cy="10" r="2" />
-      <path d="M12 12v5M12 14l-3 2M12 14l3 2" />
-    </svg>
-  );
-}
-
-// Two overlapping flashcards.
-function JapaneseIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="8" width="13" height="13" rx="2" />
-      <path d="M8 8V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-3" />
     </svg>
   );
 }

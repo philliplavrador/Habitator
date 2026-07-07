@@ -55,6 +55,19 @@ export default async function TodayPage({
   const pullupState = isToday ? await getPullupState(userId, tz) : null;
   const ankiState = isToday ? await getAnkiState(userId, tz) : null;
 
+  // Pushups/pullups/japanese are custom habits, not separate destinations, so
+  // their summary widgets flow inline with the habit list rather than being
+  // pinned above it. (Data lives in its own domains; only the presentation is
+  // unified.) Rendered server-side and handed to TodayClient as a prop.
+  const widgets =
+    pushupState || pullupState || ankiState ? (
+      <>
+        {pushupState && <RepProgramSummary state={pushupState} />}
+        {pullupState && <RepProgramSummary state={pullupState} />}
+        {ankiState && <AnkiSummary state={ankiState} />}
+      </>
+    ) : null;
+
   return (
     <main className="pb-28 pt-4">
       <header className="mb-5">
@@ -64,11 +77,7 @@ export default async function TodayPage({
         <DateNav date={selected} prevDate={prevDate} nextDate={nextDate} today={today} />
       </header>
 
-      {pushupState && <RepProgramSummary state={pushupState} />}
-      {pullupState && <RepProgramSummary state={pullupState} />}
-      {ankiState && <AnkiSummary state={ankiState} />}
-
-      <TodayClient date={selected} initialItems={items} />
+      <TodayClient date={selected} initialItems={items} widgets={widgets} />
 
       <Footer />
 

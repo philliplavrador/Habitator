@@ -71,6 +71,22 @@ gates every route (verifies the session **signature** at the edge — it does no
 decode the uid, so handlers/pages resolve it themselves). Domains: habits,
 fasts, pushups, pullups, japanese/anki.
 
+**UI framing — everything except fasting is "just a custom habit."** Only two
+domains are distinct enough to be top-level destinations: plain habits (the
+Today screen) and fasting (its own tab). Pushups, pullups, and japanese/anki
+keep their own data models and full screens, but in the UI they are presented as
+custom habits, **not** separate destinations:
+- They are **not** tabs in `BottomNav` (only Today / Insights / Fasting are).
+- Their Today-screen summary widgets (`RepProgramSummary`, `AnkiSummary`) flow
+  **inline within the habit list** in `TodayClient` (passed down as the
+  `widgets` prop from `app/page.tsx`), not pinned as a separate section above it.
+- Their full screens (`/pushups`, `/pullups`, `/japanese`) still exist and are
+  reached via each widget's "Open →" link (or the direct route).
+
+When adding a new habit-like domain, follow this pattern: give it a summary
+widget rendered inline on Today, not a new bottom-nav tab. Reserve new tabs for
+genuinely non-habit domains (like fasting).
+
 Layout:
 - `app/` — pages (server components open with `requirePageContext()`) and
   `app/api/**` route handlers. See **`app/api/CLAUDE.md`**.

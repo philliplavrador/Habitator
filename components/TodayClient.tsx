@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import HabitRow from './HabitRow';
 import ProgressRing from './ProgressRing';
@@ -13,11 +13,17 @@ import type { EntryStatus, HabitDayView } from '@/lib/types';
 interface Props {
   date: string;
   initialItems: HabitDayView[];
+  /**
+   * Server-rendered summary widgets for the custom-habit domains
+   * (pushups/pullups/japanese). They flow inline with the habit list rather
+   * than being pinned above it, so those domains read as ordinary habits.
+   */
+  widgets?: ReactNode;
 }
 
 const MILESTONES = [7, 30, 100];
 
-export default function TodayClient({ date, initialItems }: Props) {
+export default function TodayClient({ date, initialItems, widgets }: Props) {
   const router = useRouter();
   const { perfectDay, milestone } = useCelebration();
   const { show } = useToast();
@@ -140,7 +146,7 @@ export default function TodayClient({ date, initialItems }: Props) {
         </div>
       )}
 
-      {total === 0 && (
+      {total === 0 && !widgets && (
         <p className="mb-3 text-sm text-text-muted">No habits for this day yet.</p>
       )}
 
@@ -162,6 +168,10 @@ export default function TodayClient({ date, initialItems }: Props) {
           ))}
         </ul>
       )}
+
+      {/* Custom-habit summary widgets flow after the habit rows (each card
+          self-spaces via its own bottom margin). */}
+      {widgets && <div className="mt-2">{widgets}</div>}
     </div>
   );
 }

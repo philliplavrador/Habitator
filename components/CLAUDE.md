@@ -18,7 +18,14 @@ composition of what's already here.
   **percent 0..100**; see the rate-scale note in `lib/CLAUDE.md`).
 
 **Domain-shared composites** (used by multiple screens):
-- `SummaryCard` — compact Today-screen card linking to a full screen.
+- `SummaryCard` — compact Today-screen card linking to a full screen. Powers the
+  `RepProgramSummary` (pushups/pullups) and `AnkiSummary` (japanese) widgets.
+  These domains are treated as **custom habits**, so their widgets are **not** a
+  separate nav destination — `app/page.tsx` builds them server-side and passes
+  them into `TodayClient`'s `widgets` prop, which renders them **inline within
+  the habit list** (see the root `CLAUDE.md` "UI framing" note). Only fasting
+  keeps its own `BottomNav` tab; adding a new habit-like domain means adding an
+  inline summary widget, not a tab.
 - `ContributionGrid` — the calendar heatmap grid (habit calendar / streaks).
 - `EditableHistoryRow` — read↔edit row with a shared busy/error/confirm machine;
   history lists (habits, rep sessions, anki, fasts) build on it.
