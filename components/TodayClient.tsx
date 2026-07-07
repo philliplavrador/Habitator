@@ -11,15 +11,29 @@ import { useToast } from './ui/toast';
 import { apiClearEntry, apiSetEntry } from '@/lib/client';
 import type { EntryStatus, HabitDayView } from '@/lib/types';
 
+/**
+ * A custom-habit summary widget (pushups/pullups/japanese) rendered on the
+ * server and handed down for inline placement in the habit list.
+ */
+export interface WidgetItem {
+  /** Stable list key. */
+  key: string;
+  /** Done for the day — sinks the widget into the "Completed" section. */
+  completed: boolean;
+  /** The pre-rendered summary card. */
+  node: ReactNode;
+}
+
 interface Props {
   date: string;
   initialItems: HabitDayView[];
   /**
    * Server-rendered summary widgets for the custom-habit domains
    * (pushups/pullups/japanese). They flow inline with the habit list rather
-   * than being pinned above it, so those domains read as ordinary habits.
+   * than being pinned above it, so those domains read as ordinary habits — and,
+   * like ordinary habits, a completed one drops into the "Completed" section.
    */
-  widgets?: ReactNode;
+  widgets?: WidgetItem[];
 }
 
 const MILESTONES = [7, 30, 100];
@@ -118,8 +132,16 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   const activeItems = buildItems.filter((i) => i.status !== 'pass');
   const completedItems = buildItems.filter((i) => i.status === 'pass');
 
+  // Custom-habit widgets mirror the same split: an unfinished domain stays in
+  // the active list; a completed one sinks into the "Completed" section and
+  // counts toward its "Show completed" tally.
+  const widgetItems = widgets ?? [];
+  const activeWidgets = widgetItems.filter((w) => !w.completed);
+  const completedWidgets = widgetItems.filter((w) => w.completed);
+  const completedTotal = completedItems.length + completedWidgets.length;
+
   const nothingToShow =
-    buildItems.length === 0 && quitItems.length === 0 && !widgets;
+    buildItems.length === 0 && quitItems.length === 0 && widgetItems.length === 0;
 
   // ── Perfect-day celebration ──
   // Fire when the day flips from not-all-done to all-done. Initialize the ref to
@@ -269,11 +291,14 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
             </>
           )}
 
-          {/* Custom-habit summary widgets — actionable, still-to-do work, so they
-              stay above the avoiding/completed sections. */}
-          {widgets && (
+          {/* Active custom-habit summary widgets — still-to-do work, so they
+              stay above the avoiding/completed sections. Completed ones move to
+              the "Completed" section below, like any finished habit. */}
+          {activeWidgets.length > 0 && (
             <motion.div layout="position" className="mt-2">
-              {widgets}
+              {activeWidgets.map((w) => (
+                <div key={w.key}>{w.node}</div>
+              ))}
             </motion.div>
           )}
 
@@ -314,7 +339,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
           {/* Completed archive — hidden behind a scroll-down toggle. The button
               stays put; only the list expands/collapses so completed habits are
               out of the way until you deliberately ask to see them. */}
-          {completedItems.length > 0 && (
+          {completedTotal > 0 && (
             <div className="mt-8">
               <motion.button
                 type="button"
@@ -324,7 +349,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                 className="mx-auto flex items-center gap-1.5 rounded-btn px-3 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted active:opacity-70"
               >
                 <span>{showCompleted ? 'Hide' : 'Show'} completed</span>
-                <span className="tabular-nums">{completedItems.length}</span>
+                <span className="tabular-nums">{completedTotal}</span>
                 <svg
                   width="14"
                   height="14"
@@ -352,24 +377,42 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                     transition={{ layout: listSpring, opacity: { duration: 0.2 } }}
                     className="mt-3 overflow-hidden"
                   >
-                    <motion.div
-                      role="list"
-                      aria-label="Completed habits"
-                      className="flex flex-col gap-2"
-                      layout="position"
-                    >
-                      <AnimatePresence initial={false}>
-                        {completedItems.map((view) => (
-                          <MotionRow
-                            key={view.habit.id}
-                            view={view}
-                            zone="completed"
-                            busy={busyId === view.habit.id}
-                            onSetStatus={(next) => handleSet(view.habit.id, next)}
-                          />
+                    {completedItems.length > 0 && (
+                      <motion.div
+                        role="list"
+                        aria-label="Completed habits"
+                        className="flex flex-col gap-2"
+                        layout="position"
+                      >
+                        <AnimatePresence initial={false}>
+                          {completedItems.map((view) => (
+                            <MotionRow
+                              key={view.habit.id}
+                              view={view}
+                              zone="completed"
+                              busy={busyId === view.habit.id}
+                              onSetStatus={(next) => handleSet(view.habit.id, next)}
+                            />
+                          ))}
+                        </AnimatePresence>
+                      </motion.div>
+                    )}
+
+                    {/* Completed custom-habit widgets — dimmed like completed
+                        rows so the whole zone reads as "done and put away". */}
+                    {completedWidgets.length > 0 && (
+                      <div
+                        className={
+                          completedItems.length > 0
+                            ? 'mt-2 opacity-70'
+                            : 'opacity-70'
+                        }
+                      >
+                        {completedWidgets.map((w) => (
+                          <div key={w.key}>{w.node}</div>
                         ))}
-                      </AnimatePresence>
-                    </motion.div>
+                      </div>
+                    )}
                   </motion.section>
                 )}
               </AnimatePresence>

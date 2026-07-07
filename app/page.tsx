@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import DateNav from '@/components/DateNav';
-import TodayClient from '@/components/TodayClient';
+import TodayClient, { type WidgetItem } from '@/components/TodayClient';
 import RepProgramSummary from '@/components/RepProgramSummary';
 import AnkiSummary from '@/components/AnkiSummary';
 import Footer from '@/components/Footer';
@@ -86,18 +86,39 @@ export default async function TodayPage({
   // Pushups/pullups/japanese/custom rep programs are custom habits, not separate
   // destinations, so their summary widgets flow inline with the habit list
   // rather than being pinned above it. (Data lives in its own domains; only the
-  // presentation is unified.) Rendered server-side and handed to TodayClient.
-  const widgets =
-    pushupState || pullupState || ankiState || userRepStates.length > 0 ? (
-      <>
-        {pushupState && <RepProgramSummary state={pushupState} />}
-        {pullupState && <RepProgramSummary state={pullupState} />}
-        {userRepStates.map((s) => (
-          <RepProgramSummary key={s.basePath} state={s} />
-        ))}
-        {ankiState && <AnkiSummary state={ankiState} />}
-      </>
-    ) : null;
+  // presentation is unified.) Each widget carries a `completed` flag so that —
+  // exactly like an ordinary habit — a done one sinks into the "Completed"
+  // section instead of cluttering the active list. Rendered server-side and
+  // handed to TodayClient.
+  const widgets: WidgetItem[] = [];
+  if (pushupState) {
+    widgets.push({
+      key: 'pushups',
+      completed: pushupState.programComplete || pushupState.doneToday !== null,
+      node: <RepProgramSummary state={pushupState} />,
+    });
+  }
+  if (pullupState) {
+    widgets.push({
+      key: 'pullups',
+      completed: pullupState.programComplete || pullupState.doneToday !== null,
+      node: <RepProgramSummary state={pullupState} />,
+    });
+  }
+  for (const s of userRepStates) {
+    widgets.push({
+      key: s.basePath,
+      completed: s.programComplete || s.doneToday !== null,
+      node: <RepProgramSummary state={s} />,
+    });
+  }
+  if (ankiState) {
+    widgets.push({
+      key: 'japanese',
+      completed: ankiState.goalReached || ankiState.loggedToday,
+      node: <AnkiSummary state={ankiState} />,
+    });
+  }
 
   return (
     <main className="pb-28 pt-4">
