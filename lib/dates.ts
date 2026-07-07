@@ -113,6 +113,15 @@ export function weekdayOf(iso: string): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
+/** Whole calendar days from `aISO` to `bISO` (b − a); negative if b is earlier. */
+export function daysBetween(aISO: string, bISO: string): number {
+  const [ay, am, ad] = aISO.split('-').map(Number);
+  const [by, bm, bd] = bISO.split('-').map(Number);
+  const a = Date.UTC(ay, am - 1, ad);
+  const b = Date.UTC(by, bm - 1, bd);
+  return Math.round((b - a) / 86_400_000);
+}
+
 /** Inclusive list of every date string from `startISO` to `endISO`. */
 export function rangeDates(startISO: string, endISO: string): string[] {
   const out: string[] = [];

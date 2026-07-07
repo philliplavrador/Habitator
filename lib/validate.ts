@@ -5,6 +5,7 @@ import {
   nowISO,
   todayISO,
 } from './dates';
+import { normalizeSchedule } from './schedule';
 import type {
   AnkiDayInput,
   HabitInput,
@@ -52,6 +53,7 @@ function coerceInt(v: unknown, min: number, max: number): number | null {
  * - name is required (trimmed, non-empty, capped length)
  * - details/exceptions default to ''
  * - kind defaults to 'build'; only 'build' | 'quit' are accepted
+ * - schedule defaults to daily; validated/normalized by lib/schedule.ts
  * - start_date defaults to today (in the owner's `tz`); must be a valid YYYY-MM-DD
  */
 export function parseHabitInput(body: unknown, tz: string): ParseResult<HabitInput> {
@@ -71,13 +73,19 @@ export function parseHabitInput(body: unknown, tz: string): ParseResult<HabitInp
     return { ok: false, error: "kind must be 'build' or 'quit'." };
   }
 
+  const sched = normalizeSchedule(b.schedule);
+  if (!sched.ok) return { ok: false, error: sched.error };
+
   const rawStart = asString(b.start_date).trim();
   const start_date = rawStart === '' ? todayISO(tz) : rawStart;
   if (!isValidISODate(start_date)) {
     return { ok: false, error: 'start_date must be a valid YYYY-MM-DD date.' };
   }
 
-  return { ok: true, value: { name, details, exceptions, kind, start_date } };
+  return {
+    ok: true,
+    value: { name, details, exceptions, kind, schedule: sched.value, start_date },
+  };
 }
 
 // ── Fasting ─────────────────────────────────────────────────────────

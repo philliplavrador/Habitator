@@ -41,6 +41,18 @@ export async function statusMapForDate(
   return map;
 }
 
+/** Every entry across the user's habits within [start, end] (inclusive). */
+export async function listEntriesForDateRange(
+  userId: number,
+  start: string,
+  end: string
+): Promise<Entry[]> {
+  return many<Entry>(
+    `SELECT * FROM entries WHERE user_id = $1 AND date >= $2 AND date <= $3`,
+    [userId, start, end]
+  );
+}
+
 /** Every entry for a habit, ascending by date. */
 export async function listEntriesForHabit(
   userId: number,

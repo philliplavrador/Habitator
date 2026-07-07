@@ -7,7 +7,8 @@ import Sheet from './ui/Sheet';
 import { useToast } from './ui/toast';
 import { apiClearEntry, apiSetEntry } from '@/lib/client';
 import { addDays, compareISO, formatHuman, relativeLabel, weekdayOf } from '@/lib/dates';
-import type { EntryStatus, HabitKind } from '@/lib/types';
+import { isDueOn } from '@/lib/schedule';
+import type { EntryStatus, HabitKind, Schedule } from '@/lib/types';
 
 interface Props {
   habitId: number;
@@ -17,6 +18,8 @@ interface Props {
   today: string;
   /** Habit kind — a `quit` habit edits slips only (see below). */
   kind?: HabitKind;
+  /** Habit schedule — off-days (not due) are dimmed for weekday/interval habits. */
+  schedule?: Schedule;
 }
 
 type Choice = EntryStatus | 'clear';
@@ -67,6 +70,7 @@ export default function HabitCalendar({
   startDate,
   today,
   kind = 'build',
+  schedule = { kind: 'daily' },
 }: Props) {
   const isQuit = kind === 'quit';
   const router = useRouter();
@@ -173,6 +177,9 @@ export default function HabitCalendar({
           const isBefore = compareISO(date, startDate) < 0;
           const disabled = isFuture || isBefore;
           const isToday = date === today;
+          // Off-day: in-range but not scheduled (weekday/interval habits). Still
+          // tappable (you may log an extra day), just visually de-emphasized.
+          const isOff = !disabled && !isQuit && !isDueOn(schedule, startDate, date);
           const day = Number(date.slice(8, 10));
 
           let tone: string;
@@ -182,6 +189,7 @@ export default function HabitCalendar({
           // For a quit habit, an in-range blank day is a clean win, so tint it
           // green (subtly) instead of the neutral "no data" grey.
           else if (isQuit) tone = 'bg-pass/15 text-pass active:bg-pass/25';
+          else if (isOff) tone = 'bg-surface2/30 text-text-faint/60 active:bg-surface2/50';
           else tone = 'bg-surface2 text-text-secondary active:bg-surface3';
 
           return (

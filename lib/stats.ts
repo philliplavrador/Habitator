@@ -1,8 +1,9 @@
 import { getHabit } from './habits';
 import { listEntriesForHabitSince } from './entries';
 import { many } from './db';
-import { compareISO, rangeDates } from './dates';
-import type { Entry, Habit, HabitStats } from './types';
+import { addDays, compareISO, rangeDates } from './dates';
+import { isDueOn, weekStartOf } from './schedule';
+import type { Entry, EntryStatus, Habit, HabitStats, Schedule } from './types';
 
 /**
  * Stats rules for a `build` habit (mirror the owner's spreadsheet exactly):
@@ -116,15 +117,146 @@ export function computeQuitStats(
   };
 }
 
-/** Dispatch to the right stats rules for the habit's kind. */
+/**
+ * Stats rules for a STRICT scheduled build habit (`weekdays` / `interval`).
+ * Unlike a daily build habit, a due day you don't complete is a MISS, not an
+ * exception — the whole point of a schedule is accountability on its days.
+ *
+ * Walk only the schedule's DUE days in [start_date, today]:
+ *  • pass day (entry `pass`)                → success, extends the streak.
+ *  • miss day (blank OR explicit `fail`)    → breaks the streak.
+ *  • EXCEPTION: today, if it's due and still blank, is PENDING — not yet a miss
+ *    (the day isn't over), so it neither counts nor breaks the trailing streak.
+ * Non-due days are ignored entirely (they never show and never count).
+ */
+export function computeScheduledStats(
+  entries: Entry[],
+  schedule: Schedule,
+  startDate: string,
+  today: string
+): HabitStats {
+  if (compareISO(startDate, today) > 0) return { ...ZERO_STATS };
+
+  const statusByDate = new Map<string, EntryStatus>();
+  for (const e of entries) statusByDate.set(e.date, e.status);
+
+  let passes = 0;
+  let fails = 0;
+  let longestStreak = 0;
+  let run = 0;
+  for (const d of rangeDates(startDate, today)) {
+    if (!isDueOn(schedule, startDate, d)) continue;
+    const st = statusByDate.get(d);
+    if (st === 'pass') {
+      passes++;
+      run++;
+      if (run > longestStreak) longestStreak = run;
+    } else {
+      // Today, still blank → pending: the day isn't over, so don't penalize it
+      // (leaves the trailing `run` intact as the current streak).
+      if (d === today && st === undefined) continue;
+      fails++;
+      run = 0;
+    }
+  }
+  const recorded = passes + fails;
+  return {
+    passes,
+    fails,
+    recorded,
+    completionRate: recorded === 0 ? null : passes / recorded,
+    currentStreak: run,
+    longestStreak,
+  };
+}
+
+/**
+ * Stats rules for a `weekly` habit — a target of N completions per calendar week
+ * (Sun-based). Accountability is at WEEK granularity: `passes`/`fails`/streaks
+ * are counted in weeks, not days.
+ *
+ *  • A completed past week counts as a pass if it had >= N `pass` entries, else
+ *    a miss (breaking the streak).
+ *  • The current week counts as a pass only once it has already hit N; until
+ *    then it's PENDING (not a miss — the week isn't over).
+ *  • The first partial week (habit started mid-week) is skipped so a short week
+ *    can't be an unfair miss; eligible weeks start at the first Sunday >= start.
+ */
+export function computeWeeklyStats(
+  entries: Entry[],
+  count: number,
+  startDate: string,
+  today: string
+): HabitStats {
+  if (compareISO(startDate, today) > 0) return { ...ZERO_STATS };
+
+  const perWeek = new Map<string, number>();
+  for (const e of entries) {
+    if (e.status !== 'pass') continue;
+    if (compareISO(e.date, startDate) < 0) continue;
+    const wk = weekStartOf(e.date);
+    perWeek.set(wk, (perWeek.get(wk) ?? 0) + 1);
+  }
+
+  const currentWeek = weekStartOf(today);
+  // First eligible (full) week: the first Sunday on/after start_date.
+  let wk = weekStartOf(startDate);
+  if (compareISO(wk, startDate) < 0) wk = addDays(wk, 7);
+
+  let passes = 0;
+  let fails = 0;
+  let longestStreak = 0;
+  let run = 0;
+  while (compareISO(wk, currentWeek) <= 0) {
+    const met = (perWeek.get(wk) ?? 0) >= count;
+    if (wk === currentWeek && !met) {
+      // Current week not yet hit → pending: leave the trailing streak intact.
+      break;
+    }
+    if (met) {
+      passes++;
+      run++;
+      if (run > longestStreak) longestStreak = run;
+    } else {
+      fails++;
+      run = 0;
+    }
+    wk = addDays(wk, 7);
+  }
+  const recorded = passes + fails;
+  return {
+    passes,
+    fails,
+    recorded,
+    completionRate: recorded === 0 ? null : passes / recorded,
+    currentStreak: run,
+    longestStreak,
+  };
+}
+
+/** Dispatch to the right stats rules for the habit's kind + schedule. */
 export function computeHabitStats(
   habit: Habit,
   entries: Entry[],
   today: string
 ): HabitStats {
-  return habit.kind === 'quit'
-    ? computeQuitStats(entries, habit.start_date, today)
-    : computeStats(entries);
+  if (habit.kind === 'quit') {
+    return computeQuitStats(entries, habit.start_date, today);
+  }
+  switch (habit.schedule.kind) {
+    case 'weekdays':
+    case 'interval':
+      return computeScheduledStats(entries, habit.schedule, habit.start_date, today);
+    case 'weekly':
+      return computeWeeklyStats(
+        entries,
+        habit.schedule.count,
+        habit.start_date,
+        today
+      );
+    default:
+      return computeStats(entries);
+  }
 }
 
 /**

@@ -12,12 +12,35 @@ export type EntryStatus = 'pass' | 'fail';
  */
 export type HabitKind = 'build' | 'quit';
 
+/**
+ * When a habit is expected. Stored as JSON-in-TEXT in `habits.schedule`
+ * (NULL ⇒ daily, for backward-compat with every pre-schedule row). Parsed to
+ * this union by lib/schedule.ts; the row hydrator swaps the raw string for it.
+ *
+ * - `daily`   — every day (the default). Lenient: a blank day is an exception,
+ *   never a miss (preserves historical stats; mirrors the owner's spreadsheet).
+ * - `weekdays`— only the listed weekdays (0=Sun … 6=Sat), e.g. every Wed.
+ * - `interval`— every N days counted from `start_date` (every other day = 2).
+ * - `weekly`  — a target of N completions per calendar week (Sun-based).
+ *
+ * The three non-daily kinds are STRICT: a due day you don't complete counts as
+ * a miss and breaks the streak (see lib/stats.ts computeScheduledStats).
+ */
+export type Schedule =
+  | { kind: 'daily' }
+  | { kind: 'weekdays'; days: number[] } // 0=Sun..6=Sat, non-empty, sorted-unique
+  | { kind: 'interval'; every: number } // every N days from start_date (N >= 1)
+  | { kind: 'weekly'; count: number }; // N times per week (1..7)
+
+export type ScheduleKind = Schedule['kind'];
+
 export interface Habit {
   id: number;
   name: string;
   details: string;
   exceptions: string;
   kind: HabitKind; // 'build' | 'quit' — see HabitKind
+  schedule: Schedule; // when it's expected — see Schedule (raw column is JSON-in-TEXT)
   start_date: string; // YYYY-MM-DD
   sort_order: number;
   archived: number; // 0 | 1 (SQLite has no boolean)
@@ -47,6 +70,8 @@ export interface HabitDayView {
   habit: Habit;
   status: EntryStatus | null;
   currentStreak: number;
+  /** Only present for `weekly` habits: this week's completions vs. target. */
+  weekly?: WeeklyProgress;
 }
 
 /** Input accepted when creating/updating a habit. */
@@ -55,7 +80,17 @@ export interface HabitInput {
   details: string;
   exceptions: string;
   kind: HabitKind;
+  schedule: Schedule;
   start_date: string;
+}
+
+/**
+ * Weekly-count progress for the Today row of a `weekly` habit: how many
+ * completions this calendar week vs the target. Undefined for other kinds.
+ */
+export interface WeeklyProgress {
+  done: number;
+  target: number;
 }
 
 // ── Fasting ─────────────────────────────────────────────────────────

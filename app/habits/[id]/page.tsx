@@ -13,6 +13,7 @@ import { getHabitStats, formatRate } from '@/lib/stats';
 import { requirePageContext } from '@/lib/pageContext';
 import { rollingCompletionSeries, dayOfWeekBreakdown } from '@/lib/analytics';
 import { formatHuman } from '@/lib/dates';
+import { describeSchedule } from '@/lib/schedule';
 import type { EntryStatus } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -26,6 +27,27 @@ export default async function HabitDetailPage({
   const { userId, today } = await requirePageContext();
   const habit = await loadHabitOr404(params.id, userId);
   const isQuit = habit.kind === 'quit';
+  const sk = habit.schedule.kind;
+  const isWeekly = sk === 'weekly';
+  const isScheduled = sk === 'weekdays' || sk === 'interval';
+  const isDailyBuild = !isQuit && sk === 'daily';
+
+  // Stat-tile labels adapt to the habit's kind + schedule (quit → clean/slips;
+  // weekly → weeks; strict scheduled → done/misses; daily → passes/fails).
+  const rateLabel = isQuit ? 'Clean rate' : isWeekly ? 'Weekly rate' : 'Completion';
+  const streakLabel = isQuit
+    ? 'Clean streak'
+    : isWeekly
+      ? 'Week streak'
+      : 'Current streak';
+  const passLabel = isQuit ? 'Clean days' : isWeekly ? 'Weeks hit' : 'Passes';
+  const failLabel = isQuit
+    ? 'Slips'
+    : isWeekly
+      ? 'Weeks missed'
+      : isScheduled
+        ? 'Misses'
+        : 'Fails';
 
   const stats = await getHabitStats(userId, habit.id, today);
 
@@ -88,16 +110,16 @@ export default async function HabitDetailPage({
       )}
 
       <p className="mb-5 text-xs text-text-muted">
+        {!isQuit && sk !== 'daily' && (
+          <>{describeSchedule(habit.schedule)} · </>
+        )}
         Tracking since {formatHuman(habit.start_date)}
       </p>
 
       <section className="mb-3 grid grid-cols-3 gap-2">
+        <StatTile label={rateLabel} value={formatRate(stats.completionRate)} />
         <StatTile
-          label={isQuit ? 'Clean rate' : 'Completion'}
-          value={formatRate(stats.completionRate)}
-        />
-        <StatTile
-          label={isQuit ? 'Clean streak' : 'Current streak'}
+          label={streakLabel}
           value={String(stats.currentStreak)}
           accent="pass"
         />
@@ -105,16 +127,8 @@ export default async function HabitDetailPage({
       </section>
 
       <section className="mb-6 grid grid-cols-2 gap-2">
-        <StatTile
-          label={isQuit ? 'Clean days' : 'Passes'}
-          value={String(stats.passes)}
-          accent="pass"
-        />
-        <StatTile
-          label={isQuit ? 'Slips' : 'Fails'}
-          value={String(stats.fails)}
-          accent="fail"
-        />
+        <StatTile label={passLabel} value={String(stats.passes)} accent="pass" />
+        <StatTile label={failLabel} value={String(stats.fails)} accent="fail" />
       </section>
 
       <section className="mb-6">
@@ -126,6 +140,7 @@ export default async function HabitDetailPage({
           startDate={habit.start_date}
           today={today}
           kind={habit.kind}
+          schedule={habit.schedule}
         />
       </section>
 
@@ -140,16 +155,19 @@ export default async function HabitDetailPage({
             startDate={habit.start_date}
             today={today}
             kind={habit.kind}
+            schedule={habit.schedule}
           />
         </div>
         <p className="mt-2 text-xs text-text-muted">
           {isQuit
             ? 'Days are clean by default — tap a day to mark a slip, or clear it back to clean.'
-            : 'Tap any day to mark it pass, fail, or clear it back to an exception.'}
+            : isScheduled
+              ? 'Faint days are off-schedule. Tap any day to mark it pass, fail, or clear it.'
+              : 'Tap any day to mark it pass, fail, or clear it back to an exception.'}
         </p>
       </section>
 
-      {!isQuit && since.length > 0 && (
+      {isDailyBuild && since.length > 0 && (
         <section className="mb-6 flex flex-col gap-3">
           <ChartCard title="Completion trend" subtitle="14-day rolling win rate">
             <LineTrend

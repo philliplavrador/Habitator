@@ -102,8 +102,12 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   const buildItems = items.filter((i) => i.habit.kind !== 'quit');
   const quitItems = items.filter((i) => i.habit.kind === 'quit');
 
-  const doneCount = buildItems.filter((i) => i.status === 'pass').length;
-  const total = buildItems.length;
+  // The daily ring / perfect-day count only DAILY and fixed-day (weekday/
+  // interval) build habits. `weekly` habits are week-based, so they render in
+  // the list but stay out of the ring (their progress is their own week line).
+  const ringItems = buildItems.filter((i) => i.habit.schedule.kind !== 'weekly');
+  const doneCount = ringItems.filter((i) => i.status === 'pass').length;
+  const total = ringItems.length;
   const progress = total > 0 ? doneCount / total : 0;
   const allDone = total > 0 && doneCount === total;
 
@@ -114,7 +118,8 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   const activeItems = buildItems.filter((i) => i.status !== 'pass');
   const completedItems = buildItems.filter((i) => i.status === 'pass');
 
-  const nothingToShow = total === 0 && quitItems.length === 0 && !widgets;
+  const nothingToShow =
+    buildItems.length === 0 && quitItems.length === 0 && !widgets;
 
   // ── Perfect-day celebration ──
   // Fire when the day flips from not-all-done to all-done. Initialize the ref to
@@ -231,11 +236,12 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
       {!nothingToShow && (
         <div key={date}>
           {/* ── Build ("do daily") habits: active zone ── */}
-          {total > 0 && (
+          {buildItems.length > 0 && (
             <>
               {/* role="list" restores the semantics the <ul>→<div> swap drops.
-                  Kept mounted while total>0 (never gated on its own length) so
-                  completing the LAST active habit still plays its exit. */}
+                  Kept mounted while any build habit exists (never gated on its
+                  own length) so completing the LAST active one still plays its
+                  exit. */}
               <motion.div
                 role="list"
                 aria-label={activeItems.length > 0 ? 'Habits to do' : undefined}

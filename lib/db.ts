@@ -133,6 +133,10 @@ ALTER TABLE pullup_sessions ADD COLUMN IF NOT EXISTS videos TEXT;
 -- slips). Defaults to 'build' so every pre-existing/migrated habit keeps its
 -- current meaning; the app layer validates the value (see lib/validate.ts).
 ALTER TABLE habits ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'build';
+-- Habit schedule: JSON-in-TEXT (see lib/schedule.ts). NULL ⇒ daily, so every
+-- pre-existing/migrated row keeps daily semantics. Nullable + no default keeps
+-- migrate.ts's explicit-column INSERT (which omits it) valid.
+ALTER TABLE habits ADD COLUMN IF NOT EXISTS schedule TEXT;
 `;
 
 // Arbitrary constant identifying the schema/migration advisory lock. Any two

@@ -5,8 +5,9 @@ import RepProgramSummary from '@/components/RepProgramSummary';
 import AnkiSummary from '@/components/AnkiSummary';
 import Footer from '@/components/Footer';
 import { listActiveHabits } from '@/lib/habits';
-import { statusMapForDate } from '@/lib/entries';
+import { statusMapForDate, listEntriesForDateRange } from '@/lib/entries';
 import { getCurrentStreaksBatch } from '@/lib/stats';
+import { isDueOn, weekStartOf } from '@/lib/schedule';
 import { getPushupState } from '@/lib/pushups';
 import { getPullupState } from '@/lib/pullups';
 import { getAnkiState } from '@/lib/anki';
@@ -35,14 +36,37 @@ export default async function TodayPage({
   }
 
   const statusMap = await statusMapForDate(userId, selected);
-  const activeHabits = (await listActiveHabits(userId)).filter(
-    (h) => compareISO(h.start_date, selected) <= 0
+  // Show a habit only on days it's due: daily/weekly every day, weekdays/interval
+  // only on their scheduled days (isDueOn also enforces start_date >= selected).
+  const dueHabits = (await listActiveHabits(userId)).filter((h) =>
+    isDueOn(h.schedule, h.start_date, selected)
   );
-  const streaks = await getCurrentStreaksBatch(userId, activeHabits, today);
-  const items: HabitDayView[] = activeHabits.map((habit) => ({
+  const streaks = await getCurrentStreaksBatch(userId, dueHabits, today);
+
+  // Weekly-count habits show this week's progress ("2 / 3 this week") for the
+  // week containing the selected day. One extra range query, only if any exist.
+  const weeklyDone = new Map<number, number>();
+  if (dueHabits.some((h) => h.schedule.kind === 'weekly')) {
+    const weekEntries = await listEntriesForDateRange(
+      userId,
+      weekStartOf(selected),
+      selected
+    );
+    for (const e of weekEntries) {
+      if (e.status === 'pass') {
+        weeklyDone.set(e.habit_id, (weeklyDone.get(e.habit_id) ?? 0) + 1);
+      }
+    }
+  }
+
+  const items: HabitDayView[] = dueHabits.map((habit) => ({
     habit,
     status: statusMap.get(habit.id) ?? null,
     currentStreak: streaks.get(habit.id) ?? 0,
+    weekly:
+      habit.schedule.kind === 'weekly'
+        ? { done: weeklyDone.get(habit.id) ?? 0, target: habit.schedule.count }
+        : undefined,
   }));
 
   const prevDate = addDays(selected, -1);

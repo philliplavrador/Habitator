@@ -1,35 +1,48 @@
 import { many, one, run } from './db';
+import { parseSchedule, serializeSchedule } from './schedule';
 import type { Habit, HabitInput } from './types';
 
 // All queries are scoped to `userId` so each account only ever sees its own
 // habits.
 
+// The raw DB row: identical to Habit except `schedule` is the JSON-in-TEXT
+// column (NULL ⇒ daily). Every read maps through `hydrate` so callers always get
+// a parsed `Schedule` object, never the raw string.
+type HabitRow = Omit<Habit, 'schedule'> & { schedule: string | null };
+
+function hydrate(row: HabitRow): Habit {
+  return { ...row, schedule: parseSchedule(row.schedule) };
+}
+
 /** Active (non-archived) habits, in display order. */
 export async function listActiveHabits(userId: number): Promise<Habit[]> {
-  return many<Habit>(
+  const rows = await many<HabitRow>(
     `SELECT * FROM habits WHERE user_id = $1 AND archived = 0
      ORDER BY sort_order ASC, id ASC`,
     [userId]
   );
+  return rows.map(hydrate);
 }
 
 /** Every habit, archived last. */
 export async function listAllHabits(userId: number): Promise<Habit[]> {
-  return many<Habit>(
+  const rows = await many<HabitRow>(
     `SELECT * FROM habits WHERE user_id = $1
      ORDER BY archived ASC, sort_order ASC, id ASC`,
     [userId]
   );
+  return rows.map(hydrate);
 }
 
 export async function getHabit(
   userId: number,
   id: number
 ): Promise<Habit | undefined> {
-  return one<Habit>(`SELECT * FROM habits WHERE id = $1 AND user_id = $2`, [
-    id,
-    userId,
-  ]);
+  const row = await one<HabitRow>(
+    `SELECT * FROM habits WHERE id = $1 AND user_id = $2`,
+    [id, userId]
+  );
+  return row ? hydrate(row) : undefined;
 }
 
 /** Create a habit; appends to the end of the manual sort order. */
@@ -42,21 +55,22 @@ export async function createHabit(
     [userId]
   );
   const maxOrder = row?.maxorder ?? -1;
-  const created = await one<Habit>(
-    `INSERT INTO habits (user_id, name, details, exceptions, kind, start_date, sort_order, archived, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8) RETURNING *`,
+  const created = await one<HabitRow>(
+    `INSERT INTO habits (user_id, name, details, exceptions, kind, schedule, start_date, sort_order, archived, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9) RETURNING *`,
     [
       userId,
       input.name,
       input.details,
       input.exceptions,
       input.kind,
+      serializeSchedule(input.schedule),
       input.start_date,
       maxOrder + 1,
       new Date().toISOString(),
     ]
   );
-  return created!;
+  return hydrate(created!);
 }
 
 /** Update a habit's editable fields. Returns the fresh row, or undefined. */
@@ -66,13 +80,14 @@ export async function updateHabit(
   input: HabitInput
 ): Promise<Habit | undefined> {
   const changed = await run(
-    `UPDATE habits SET name = $1, details = $2, exceptions = $3, kind = $4, start_date = $5
-     WHERE id = $6 AND user_id = $7`,
+    `UPDATE habits SET name = $1, details = $2, exceptions = $3, kind = $4, schedule = $5, start_date = $6
+     WHERE id = $7 AND user_id = $8`,
     [
       input.name,
       input.details,
       input.exceptions,
       input.kind,
+      serializeSchedule(input.schedule),
       input.start_date,
       id,
       userId,

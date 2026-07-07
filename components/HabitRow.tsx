@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { describeSchedule } from '@/lib/schedule';
 import type { EntryStatus, HabitDayView } from '@/lib/types';
 
 interface Props {
@@ -43,7 +44,7 @@ function RowShell({
 }
 
 export default function HabitRow({ view, busy, onSetStatus }: Props) {
-  const { habit, status, currentStreak } = view;
+  const { habit, status, currentStreak, weekly } = view;
   const href = `/habits/${habit.id}`;
 
   // ── Quit habit: clean by default; only an explicit slip fails it. ──
@@ -87,10 +88,24 @@ export default function HabitRow({ view, busy, onSetStatus }: Props) {
   // ── Build habit: check it off each day (pass), or mark an explicit fail. ──
   const tapPass = () => onSetStatus(status === 'pass' ? null : 'pass');
   const tapFail = () => onSetStatus(status === 'fail' ? null : 'fail');
+
+  // Sub-line: weekly progress (weekly habits), the streak, and a schedule hint
+  // for fixed-day/interval habits so it's clear which days they're expected.
+  const scheduleHint =
+    habit.schedule.kind === 'weekdays' || habit.schedule.kind === 'interval'
+      ? describeSchedule(habit.schedule)
+      : null;
+  const weekMet = weekly ? weekly.done >= weekly.target : false;
   const sub =
-    currentStreak > 0 ? (
-      <span className="mt-0.5 inline-block text-xs text-text-muted">
-        🔥 {currentStreak}
+    weekly || currentStreak > 0 || scheduleHint ? (
+      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-text-muted">
+        {weekly && (
+          <span className={weekMet ? 'font-medium text-pass' : ''}>
+            {weekly.done}/{weekly.target} this week
+          </span>
+        )}
+        {currentStreak > 0 && <span>🔥 {currentStreak}</span>}
+        {scheduleHint && <span>{scheduleHint}</span>}
       </span>
     ) : undefined;
 
