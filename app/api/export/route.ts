@@ -37,6 +37,13 @@ export async function GET() {
       ]),
     ]);
 
+  // Backup envelope. `version` and the table list below are coupled to the DB
+  // schema (lib/db.ts): each `version` pins the exact set of tables/columns a
+  // dump contains. Adding a new tracked domain (a new table exported here) is a
+  // format change — bump `version`, add its SELECT to the Promise.all above, and
+  // add the field to this payload together, so an importer can tell what a given
+  // dump holds. (version 6 = habits, entries, fasts, pushupSessions,
+  // pullupSessions, ankiDays.)
   const payload = {
     app: 'habitator',
     version: 6,

@@ -1,5 +1,4 @@
-import Link from 'next/link';
-import ProgressBar from './ProgressBar';
+import SummaryCard from './SummaryCard';
 import type { RepProgramState } from '@/lib/types';
 
 /**
@@ -8,49 +7,36 @@ import type { RepProgramState } from '@/lib/types';
  * logging, history, heatmap, and charts. Shared by pushups and pullups.
  */
 export default function RepProgramSummary({ state }: { state: RepProgramState }) {
-  const pct = state.completedCount / state.programDays;
+  const pct = (state.completedCount / state.programDays) * 100;
   const done = state.doneToday !== null;
 
   return (
-    <Link
+    <SummaryCard
+      title={state.label}
       href={`/${state.key}`}
-      className="mb-4 block rounded-card border border-border bg-surface p-4 shadow-card transition-colors active:bg-surface2"
+      pct={pct}
+      complete={state.programComplete}
+      badge={`Day ${state.currentDay} of ${state.programDays}`}
+      aside={
+        state.currentStreak > 0 ? (
+          <span className="text-text-muted">🔥 {state.currentStreak}</span>
+        ) : null
+      }
     >
-      <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="font-display text-base font-bold text-text-primary">
-          {state.label}
-        </h2>
-        <span className="text-xs font-semibold text-accent-400">
-          {state.programComplete
-            ? 'Complete 🎉'
-            : `Day ${state.currentDay} of ${state.programDays}`}
+      {state.programComplete ? (
+        <span className="text-text-secondary">
+          All {state.programDays} days done 💪
         </span>
-      </div>
-
-      <ProgressBar value={pct} tone={state.programComplete ? 'pass' : 'accent'} />
-
-      <div className="mt-2 flex items-center justify-between text-xs">
-        {state.programComplete ? (
-          <span className="text-text-secondary">
-            All {state.programDays} days done 💪
+      ) : done ? (
+        <span className="font-semibold text-pass">✓ Done today</span>
+      ) : (
+        <span className="text-text-muted">
+          Today:{' '}
+          <span className="font-semibold text-text-secondary">
+            {state.target.join(' · ')}
           </span>
-        ) : done ? (
-          <span className="font-semibold text-pass">✓ Done today</span>
-        ) : (
-          <span className="text-text-muted">
-            Today:{' '}
-            <span className="font-semibold text-text-secondary">
-              {state.target.join(' · ')}
-            </span>
-          </span>
-        )}
-        <span className="flex items-center gap-2">
-          {state.currentStreak > 0 && (
-            <span className="text-text-muted">🔥 {state.currentStreak}</span>
-          )}
-          <span className="font-semibold text-accent-400">Open →</span>
         </span>
-      </div>
-    </Link>
+      )}
+    </SummaryCard>
   );
 }

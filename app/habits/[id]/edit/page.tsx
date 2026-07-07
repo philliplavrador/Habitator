@@ -1,9 +1,7 @@
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import BackHeader from '@/components/BackHeader';
 import AddHabitForm from '@/components/AddHabitForm';
-import { getHabit } from '@/lib/habits';
-import { requireUserId } from '@/lib/auth';
-import { getTimezone } from '@/lib/tz';
+import { loadHabitOr404 } from '@/lib/habitPage';
+import { requirePageContext } from '@/lib/pageContext';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,27 +11,14 @@ export default async function EditHabitPage({
 }: {
   params: { id: string };
 }) {
-  const userId = await requireUserId();
-  const id = Number(params.id);
-  if (!Number.isInteger(id) || id <= 0) notFound();
-
-  const habit = await getHabit(userId, id);
-  if (!habit) notFound();
+  const { userId, tz } = await requirePageContext();
+  const habit = await loadHabitOr404(params.id, userId);
 
   return (
     <main className="py-4">
-      <header className="mb-6 flex items-center gap-3">
-        <Link
-          href={`/habits/${id}`}
-          aria-label="Back"
-          className="flex h-9 w-9 items-center justify-center rounded-btn border border-border text-text-secondary active:bg-surface2"
-        >
-          ‹
-        </Link>
-        <h1 className="text-lg font-bold text-text-primary">Edit habit</h1>
-      </header>
+      <BackHeader href={`/habits/${habit.id}`} title="Edit habit" />
 
-      <AddHabitForm habit={habit} tz={getTimezone()} />
+      <AddHabitForm habit={habit} tz={tz} />
     </main>
   );
 }

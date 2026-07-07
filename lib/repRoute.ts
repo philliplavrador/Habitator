@@ -12,6 +12,7 @@ import type { RepProgram } from './repProgram';
 import { getCurrentUserId } from './auth';
 import { parseRepSets } from './validate';
 import { getTimezone } from './tz';
+import { parseId, readJson, unauthorized } from './apiRoute';
 import {
   MAX_VIDEO_BYTES,
   buildVideoResponse,
@@ -19,23 +20,6 @@ import {
   isVideoFile,
   saveVideo,
 } from './media';
-
-function parseId(v: string): number | null {
-  const n = Number(v);
-  return Number.isInteger(n) && n > 0 ? n : null;
-}
-
-async function readJson(req: NextRequest): Promise<unknown | undefined> {
-  try {
-    return await req.json();
-  } catch {
-    return undefined;
-  }
-}
-
-function unauthorized() {
-  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-}
 
 // GET  /api/<prog>        → computed program state
 // POST /api/<prog>  { reps } → log an attempt at the current day
@@ -77,7 +61,7 @@ export function createRepItemRoute(program: RepProgram) {
     if (userId === null) return unauthorized();
     const id = parseId(params.id);
     if (id === null) {
-      return NextResponse.json({ error: 'Bad session id.' }, { status: 400 });
+      return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
     const body = await readJson(req);
     if (body === undefined) {
@@ -105,7 +89,7 @@ export function createRepItemRoute(program: RepProgram) {
     if (userId === null) return unauthorized();
     const id = parseId(params.id);
     if (id === null) {
-      return NextResponse.json({ error: 'Bad session id.' }, { status: 400 });
+      return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
     const removed = await program.remove(userId, id);
     if (!removed) {
@@ -133,7 +117,7 @@ export function createRepVideoRoute(program: RepProgram) {
     if (userId === null) return unauthorized();
     const id = parseId(params.id);
     if (id === null) {
-      return NextResponse.json({ error: 'Bad session id.' }, { status: 400 });
+      return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
     const session = await program.get(userId, id);
     if (!session || !session.video) {
@@ -154,7 +138,7 @@ export function createRepVideoRoute(program: RepProgram) {
     if (userId === null) return unauthorized();
     const id = parseId(params.id);
     if (id === null) {
-      return NextResponse.json({ error: 'Bad session id.' }, { status: 400 });
+      return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
     const existing = await program.get(userId, id);
     if (!existing) {
@@ -231,7 +215,7 @@ export function createRepVideoRoute(program: RepProgram) {
     if (userId === null) return unauthorized();
     const id = parseId(params.id);
     if (id === null) {
-      return NextResponse.json({ error: 'Bad session id.' }, { status: 400 });
+      return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
     const existing = await program.get(userId, id);
     if (!existing) {

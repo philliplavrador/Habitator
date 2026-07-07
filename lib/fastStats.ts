@@ -1,4 +1,4 @@
-import { hoursBetween } from './dates';
+import { completedFastHours } from './analytics';
 import type { Fast, FastStats } from './types';
 
 /**
@@ -12,17 +12,16 @@ import type { Fast, FastStats } from './types';
  *  • goalsHit     = completed fasts whose length reached its goal_hours
  */
 export function computeFastStats(fasts: Fast[]): FastStats {
-  const completed = fasts.filter((f) => f.end_at !== null);
+  const completed = completedFastHours(fasts);
 
   let totalHours = 0;
   let longestHours: number | null = null;
   let goalsHit = 0;
 
-  for (const f of completed) {
-    const hours = hoursBetween(f.start_at, f.end_at as string);
+  for (const { hours, hit } of completed) {
     totalHours += hours;
     if (longestHours === null || hours > longestHours) longestHours = hours;
-    if (hours >= f.goal_hours) goalsHit++;
+    if (hit) goalsHit++;
   }
 
   const totalFasts = completed.length;

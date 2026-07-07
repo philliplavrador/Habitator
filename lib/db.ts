@@ -23,6 +23,12 @@ import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 // only structural change is the `users` table plus a `user_id` FK on every table
 // and per-user uniqueness. All statements are IF NOT EXISTS so re-running the
 // schema on every boot against an existing database is a safe no-op.
+//
+// The INTEGER 0/1 flags (habits.archived, *_sessions.completed) and the
+// JSON-in-TEXT columns (*_sessions.target/reps) are deliberate MIGRATION-FIDELITY
+// requirements, not un-modernized SQLite leftovers: the one-time importer copies
+// these values across byte-for-byte, so they must NOT be "upgraded" to
+// boolean/jsonb. See lib/migrate.ts.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id            SERIAL PRIMARY KEY,
@@ -179,6 +185,12 @@ function rawPool(): Pool {
   return globalForDb.__habitatorPool;
 }
 
+// Cross-instance serialization vs. in-process serialization are two separate
+// layers, both required:
+//   • The Postgres pg_advisory_lock below serializes the schema + migration
+//     critical section ACROSS every booting instance/process.
+//   • The `__habitatorInit` memo in ready() serializes concurrent callers
+//     WITHIN this process so only one initialize() ever runs at a time here.
 async function initialize(): Promise<void> {
   const client = await rawPool().connect();
   try {
@@ -199,7 +211,20 @@ async function initialize(): Promise<void> {
 /** Ensure the pool exists and the schema + migration have run (once). */
 function ready(): Promise<void> {
   if (!globalForDb.__habitatorInit) {
-    globalForDb.__habitatorInit = initialize();
+    // Memoize the in-flight promise so concurrent many/one/run/tx callers all
+    // await the SAME initialize() (single initializer per process). But on
+    // FAILURE, clear the memo so the next caller retries a fresh initialize()
+    // instead of re-awaiting a permanently-rejected promise (which would brick
+    // the process after a transient DB hiccup / not-yet-reachable DATABASE_URL).
+    // The `=== p` guard makes clearing a no-op if a retry has already replaced
+    // the memo, so we never wipe a newer in-flight init.
+    const p = initialize();
+    globalForDb.__habitatorInit = p;
+    p.catch(() => {
+      if (globalForDb.__habitatorInit === p) {
+        globalForDb.__habitatorInit = undefined;
+      }
+    });
   }
   return globalForDb.__habitatorInit;
 }

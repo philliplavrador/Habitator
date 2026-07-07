@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { clearEntry, setEntry } from '@/lib/entries';
 import { getHabit } from '@/lib/habits';
 import { getCurrentUserId } from '@/lib/auth';
+import { parseId, readJson, unauthorized } from '@/lib/apiRoute';
 import { compareISO, isValidISODate, todayISO } from '@/lib/dates';
 import { getTimezone } from '@/lib/tz';
 import type { EntryStatus } from '@/lib/types';
@@ -9,25 +10,18 @@ import type { EntryStatus } from '@/lib/types';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function parseHabitId(v: unknown): number | null {
-  const n = Number(v);
-  return Number.isInteger(n) && n > 0 ? n : null;
-}
-
 // POST /api/entries  body { habitId, date, status }  → set pass/fail
 export async function POST(req: NextRequest) {
   const userId = await getCurrentUserId();
-  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (userId === null) return unauthorized();
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
+  const body = await readJson(req);
+  if (body === undefined) {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 });
   }
 
   const b = (body ?? {}) as Record<string, unknown>;
-  const habitId = parseHabitId(b.habitId);
+  const habitId = parseId(b.habitId);
   const date = typeof b.date === 'string' ? b.date : '';
   const status = b.status as EntryStatus;
 
@@ -72,10 +66,10 @@ export async function POST(req: NextRequest) {
 // DELETE /api/entries?habitId=..&date=..  → clear back to blank
 export async function DELETE(req: NextRequest) {
   const userId = await getCurrentUserId();
-  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (userId === null) return unauthorized();
 
   const sp = req.nextUrl.searchParams;
-  const habitId = parseHabitId(sp.get('habitId'));
+  const habitId = parseId(sp.get('habitId'));
   const date = sp.get('date') ?? '';
 
   if (habitId === null) {

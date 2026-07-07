@@ -1,5 +1,4 @@
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import BackHeader from '@/components/BackHeader';
 import StatTile from '@/components/ui/StatTile';
 import Heatmap from '@/components/Heatmap';
 import HabitCalendar from '@/components/HabitCalendar';
@@ -7,22 +6,14 @@ import HabitActions from '@/components/HabitActions';
 import ChartCard from '@/components/charts/ChartCard';
 import LineTrend from '@/components/charts/LineTrend';
 import BarBreakdown from '@/components/charts/BarBreakdown';
-import { chart } from '@/components/charts/theme';
-import { getHabit } from '@/lib/habits';
+import { chart, weekdayColor } from '@/components/charts/theme';
+import { loadHabitOr404 } from '@/lib/habitPage';
 import { listEntriesForHabit, listEntriesForHabitSince } from '@/lib/entries';
 import { getHabitStats, formatRate } from '@/lib/stats';
-import { requireUserId } from '@/lib/auth';
+import { requirePageContext } from '@/lib/pageContext';
 import { rollingCompletionSeries, dayOfWeekBreakdown } from '@/lib/analytics';
-import { formatHuman, todayISO } from '@/lib/dates';
-import { getTimezone } from '@/lib/tz';
+import { formatHuman } from '@/lib/dates';
 import type { EntryStatus } from '@/lib/types';
-
-function weekdayColor(rate: number | null): string {
-  if (rate === null) return '#2a2f3a';
-  if (rate >= 67) return chart.pass;
-  if (rate >= 34) return chart.warn;
-  return chart.fail;
-}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,23 +23,18 @@ export default async function HabitDetailPage({
 }: {
   params: { id: string };
 }) {
-  const userId = await requireUserId();
-  const id = Number(params.id);
-  if (!Number.isInteger(id) || id <= 0) notFound();
+  const { userId, today } = await requirePageContext();
+  const habit = await loadHabitOr404(params.id, userId);
 
-  const habit = await getHabit(userId, id);
-  if (!habit) notFound();
-
-  const stats = await getHabitStats(userId, id);
-  const today = todayISO(getTimezone());
+  const stats = await getHabitStats(userId, habit.id);
 
   const statusByDate: Record<string, EntryStatus> = {};
-  for (const e of await listEntriesForHabit(userId, id)) {
+  for (const e of await listEntriesForHabit(userId, habit.id)) {
     statusByDate[e.date] = e.status;
   }
 
   // Analytics over recorded days on/after the start date.
-  const since = await listEntriesForHabitSince(userId, id, habit.start_date);
+  const since = await listEntriesForHabitSince(userId, habit.id, habit.start_date);
   const trend = rollingCompletionSeries(since, 14).map((p) => ({
     label: p.date.slice(5),
     rate: p.rate,
@@ -60,23 +46,20 @@ export default async function HabitDetailPage({
 
   return (
     <main className="py-4">
-      <header className="mb-5 flex items-center gap-3">
-        <Link
-          href="/"
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-btn border border-border text-text-secondary active:bg-surface2"
-        >
-          ‹
-        </Link>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-text-primary">
-          {habit.name}
-        </h1>
-        {habit.archived === 1 && (
-          <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-text-muted">
-            Archived
-          </span>
-        )}
-      </header>
+      <BackHeader
+        href="/"
+        title={habit.name}
+        className="mb-5"
+        right={
+          habit.archived === 1 ? (
+            <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-text-muted">
+              Archived
+            </span>
+          ) : (
+            <></>
+          )
+        }
+      />
 
       {(habit.details || habit.exceptions) && (
         <section className="mb-5 flex flex-col gap-3 rounded-card border border-border bg-surface px-4 py-3 text-sm">

@@ -2,10 +2,9 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Button from './ui/Button';
 import { Field } from './ui/Field';
 import { useConfirm } from './ui/confirm';
-import { useToast } from './ui/toast';
+import EditableHistoryRow from './EditableHistoryRow';
 import {
   apiDeleteRepSession,
   apiDeleteRepVideo,
@@ -48,9 +47,6 @@ function SessionRow({
 }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const { show } = useToast();
-  const [editing, setEditing] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [reps, setReps] = useState<string[]>(session.reps.map(String));
   const [showVideo, setShowVideo] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,134 +60,21 @@ function SessionRow({
       const n = parseInt(r, 10);
       return Number.isFinite(n) && n >= 0 ? n : 0;
     });
-    setBusy(true);
-    try {
-      await apiUpdateReps(program, session.id, parsed);
-      setEditing(false);
-      router.refresh();
-    } catch (e) {
-      show({
-        tone: 'error',
-        title: 'Could not save',
-        description: e instanceof Error ? e.message : undefined,
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function del() {
-    const ok = await confirm({
-      title: 'Delete this session?',
-      message: 'This may roll your current program day back, and removes its video.',
-      confirmLabel: 'Delete',
-      danger: true,
-    });
-    if (!ok) return;
-    setBusy(true);
-    try {
-      await apiDeleteRepSession(program, session.id);
-      router.refresh();
-    } catch (e) {
-      show({
-        tone: 'error',
-        title: 'Could not delete',
-        description: e instanceof Error ? e.message : undefined,
-      });
-      setBusy(false);
-    }
-  }
-
-  async function uploadVideo(file: File) {
-    setBusy(true);
-    try {
-      await apiUploadRepVideo(program, session.id, file);
-      setShowVideo(true);
-      router.refresh();
-    } catch (e) {
-      show({
-        tone: 'error',
-        title: 'Could not upload video',
-        description: e instanceof Error ? e.message : undefined,
-      });
-    } finally {
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  }
-
-  async function removeVideo() {
-    const ok = await confirm({
-      title: 'Remove this video?',
-      message: 'The session stays; only the video is deleted.',
-      confirmLabel: 'Remove',
-      danger: true,
-    });
-    if (!ok) return;
-    setBusy(true);
-    try {
-      await apiDeleteRepVideo(program, session.id);
-      setShowVideo(false);
-      router.refresh();
-    } catch (e) {
-      show({
-        tone: 'error',
-        title: 'Could not remove video',
-        description: e instanceof Error ? e.message : undefined,
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (editing) {
-    return (
-      <li className="rounded-card border border-border bg-surface p-3 shadow-card">
-        <div className="mb-2 text-sm font-semibold text-text-secondary">
-          Day {session.day_index} · target {session.target.join(' · ')}
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {session.reps.map((_, i) => (
-            <Field
-              key={i}
-              label={`Set ${i + 1}`}
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={reps[i] ?? ''}
-              onChange={(e) => {
-                const next = [...reps];
-                next[i] = e.target.value;
-                setReps(next);
-              }}
-            />
-          ))}
-        </div>
-        <div className="mt-3 flex gap-2">
-          <Button size="sm" fullWidth onClick={save} loading={busy}>
-            Save
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            fullWidth
-            onClick={() => {
-              setEditing(false);
-              setReps(session.reps.map(String));
-            }}
-            disabled={busy}
-          >
-            Cancel
-          </Button>
-        </div>
-      </li>
-    );
+    await apiUpdateReps(program, session.id, parsed);
   }
 
   return (
-    <li className="rounded-card border border-border bg-surface p-3 shadow-card">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+    <EditableHistoryRow
+      confirmCopy={{
+        title: 'Delete this session?',
+        message: 'This may roll your current program day back, and removes its video.',
+        confirmLabel: 'Delete',
+      }}
+      onSave={save}
+      onDelete={() => apiDeleteRepSession(program, session.id)}
+      onCancel={() => setReps(session.reps.map(String))}
+      read={
+        <>
           <div className="flex items-center gap-2">
             <span className="font-display text-sm font-bold text-text-primary">
               Day {session.day_index}
@@ -212,76 +95,130 @@ function SessionRow({
             <span className="text-text-faint">/ {session.target.join(' · ')}</span>
           </p>
           <p className="text-xs text-text-faint">{formatHuman(session.date)}</p>
-        </div>
-        <div className="flex shrink-0 gap-1">
-          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
-            Edit
-          </Button>
-          <Button size="sm" variant="danger" onClick={del} disabled={busy}>
-            Delete
-          </Button>
-        </div>
-      </div>
+        </>
+      }
+      editForm={
+        <>
+          <div className="mb-2 text-sm font-semibold text-text-secondary">
+            Day {session.day_index} · target {session.target.join(' · ')}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {session.reps.map((_, i) => (
+              <Field
+                key={i}
+                label={`Set ${i + 1}`}
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={reps[i] ?? ''}
+                onChange={(e) => {
+                  const next = [...reps];
+                  next[i] = e.target.value;
+                  setReps(next);
+                }}
+              />
+            ))}
+          </div>
+        </>
+      }
+      extraActions={({ busy, run }) => {
+        const uploadVideo = (file: File) =>
+          run(
+            async () => {
+              await apiUploadRepVideo(program, session.id, file);
+              setShowVideo(true);
+              router.refresh();
+            },
+            {
+              errorTitle: 'Could not upload video',
+              onFinally: () => {
+                if (fileRef.current) fileRef.current.value = '';
+              },
+            },
+          );
 
-      {/* Optional video: play inline, replace, or remove; add if none yet. */}
-      <input
-        ref={fileRef}
-        type="file"
-        accept="video/*"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) uploadVideo(f);
-        }}
-      />
-      <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-border/60 pt-2 text-xs">
-        {videoUrl ? (
+        const removeVideo = async () => {
+          const ok = await confirm({
+            title: 'Remove this video?',
+            message: 'The session stays; only the video is deleted.',
+            confirmLabel: 'Remove',
+            danger: true,
+          });
+          if (!ok) return;
+          run(
+            async () => {
+              await apiDeleteRepVideo(program, session.id);
+              setShowVideo(false);
+              router.refresh();
+            },
+            { errorTitle: 'Could not remove video' },
+          );
+        };
+
+        return (
           <>
-            <button
-              type="button"
-              onClick={() => setShowVideo((v) => !v)}
-              className="text-accent-400 active:text-accent"
-            >
-              {showVideo ? 'Hide video' : '▶ Play video'}
-            </button>
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={busy}
-              className="text-text-muted underline active:text-text-primary disabled:opacity-50"
-            >
-              Replace
-            </button>
-            <button
-              type="button"
-              onClick={removeVideo}
-              disabled={busy}
-              className="text-text-muted underline active:text-fail disabled:opacity-50"
-            >
-              Remove video
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="text-text-muted underline active:text-text-primary disabled:opacity-50"
-          >
-            {busy ? 'Uploading…' : '🎬 Add video'}
-          </button>
-        )}
-      </div>
+            {/* Optional video: play inline, replace, or remove; add if none yet. */}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadVideo(f);
+              }}
+            />
+            <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-border/60 pt-2 text-xs">
+              {videoUrl ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowVideo((v) => !v)}
+                    className="text-accent-400 active:text-accent"
+                  >
+                    {showVideo ? 'Hide video' : '▶ Play video'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={busy}
+                    className="text-text-muted underline active:text-text-primary disabled:opacity-50"
+                  >
+                    Replace
+                  </button>
+                  <button
+                    type="button"
+                    onClick={removeVideo}
+                    disabled={busy}
+                    className="text-text-muted underline active:text-fail disabled:opacity-50"
+                  >
+                    Remove video
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={busy}
+                  className="text-text-muted underline active:text-text-primary disabled:opacity-50"
+                >
+                  {busy ? 'Uploading…' : '🎬 Add video'}
+                </button>
+              )}
+            </div>
 
-      {videoUrl && showVideo && (
-        <video
-          src={videoUrl}
-          controls
-          playsInline
-          preload="metadata"
-          className="mt-2 w-full rounded-btn border border-border bg-black"
-        />
-      )}
-    </li>
+            {videoUrl && showVideo && (
+              <video
+                src={videoUrl}
+                controls
+                playsInline
+                preload="metadata"
+                className="mt-2 w-full rounded-btn border border-border bg-black"
+              />
+            )}
+          </>
+        );
+      }}
+    />
   );
 }

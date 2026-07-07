@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ProgressBar from './ProgressBar';
+import HeroLogCard, { heroInputClass } from './HeroLogCard';
+import Button from './ui/Button';
 import { apiLogReps, apiUploadRepVideo } from '@/lib/client';
 import type { RepProgramState } from '@/lib/types';
 import { useCelebration } from './hooks/useCelebration';
@@ -11,9 +12,6 @@ import { useToast } from './ui/toast';
 interface Props {
   initialState: RepProgramState;
 }
-
-const inputClass =
-  'w-full rounded-btn border border-border bg-surface2 px-3 py-2.5 text-center text-lg font-semibold text-text-primary outline-none focus:border-accent';
 
 function restLabel(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -124,34 +122,33 @@ export default function RepProgramCard({ initialState }: Props) {
   // ── Program complete ──
   if (state.programComplete) {
     return (
-      <Card>
-        <Header title={state.label} badge="Complete 🎉" />
-        <ProgressBar value={1} tone="pass" />
+      <HeroLogCard title={state.label} badge="Complete 🎉" pct={1} tone="pass">
         <p className="mt-2 text-sm text-text-secondary">
           All {state.programDays} days done — you finished on {state.finishLabel}. 💪
         </p>
         <StreakLine state={state} />
-      </Card>
+      </HeroLogCard>
     );
   }
 
   const rested = state.doneToday !== null && !logging;
 
+  const subtext = (
+    <p className="mt-2 text-xs text-text-muted">
+      <span className="font-semibold text-text-secondary">
+        {state.daysLeft} {state.daysLeft === 1 ? 'day' : 'days'} left
+      </span>{' '}
+      · {Math.round(pct * 100)}% complete
+    </p>
+  );
+
   return (
-    <Card>
-      <Header
-        title={state.label}
-        badge={`Day ${state.currentDay} of ${state.programDays}`}
-      />
-
-      <ProgressBar value={pct} />
-      <p className="mt-2 text-xs text-text-muted">
-        <span className="font-semibold text-text-secondary">
-          {state.daysLeft} {state.daysLeft === 1 ? 'day' : 'days'} left
-        </span>{' '}
-        · {Math.round(pct * 100)}% complete
-      </p>
-
+    <HeroLogCard
+      title={state.label}
+      badge={`Day ${state.currentDay} of ${state.programDays}`}
+      pct={pct}
+      subtext={subtext}
+    >
       <StreakLine state={state} />
 
       <div className="mt-3 rounded-btn bg-surface2/60 px-3 py-2 text-center text-sm">
@@ -189,7 +186,7 @@ export default function RepProgramCard({ initialState }: Props) {
                   type="number"
                   inputMode="numeric"
                   min={0}
-                  className={inputClass}
+                  className={heroInputClass}
                   value={reps[i] ?? ''}
                   onChange={(e) => {
                     const next = [...reps];
@@ -272,17 +269,12 @@ export default function RepProgramCard({ initialState }: Props) {
           )}
           {error && <p className="text-center text-sm text-fail">{error}</p>}
 
-          <button
-            type="button"
-            onClick={handleComplete}
-            disabled={busy}
-            className="rounded-btn bg-accent px-4 py-3 text-center font-semibold text-white active:bg-accent-soft disabled:opacity-50"
-          >
+          <Button fullWidth size="lg" onClick={handleComplete} disabled={busy}>
             {busy ? 'Saving…' : 'Complete session'}
-          </button>
+          </Button>
         </div>
       )}
-    </Card>
+    </HeroLogCard>
   );
 }
 
@@ -301,22 +293,5 @@ function StreakLine({ state }: { state: RepProgramState }) {
         ? ` · best ${state.longestStreak}`
         : ''}
     </p>
-  );
-}
-
-function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <section className="mb-4 rounded-card border border-border bg-surface p-4">
-      {children}
-    </section>
-  );
-}
-
-function Header({ title, badge }: { title: string; badge: string }) {
-  return (
-    <div className="mb-3 flex items-baseline justify-between">
-      <h2 className="text-base font-bold text-text-primary">{title}</h2>
-      <span className="text-xs font-semibold text-accent">{badge}</span>
-    </div>
   );
 }

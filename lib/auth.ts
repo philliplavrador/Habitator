@@ -14,6 +14,10 @@ export const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 
 // ── Password hashing (scrypt, no external dependency) ───────────────
 
+// Key length for NEWLY hashed passwords. verifyPassword does NOT use this
+// constant — it derives the keylen from the stored hash's own length — so
+// changing this value only affects new hashes and never breaks verification of
+// existing ones.
 const SCRYPT_KEYLEN = 64;
 
 /** Hash a password as `scrypt$<saltHex>$<hashHex>` (per-password random salt). */
@@ -31,10 +35,14 @@ export function verifyPassword(password: string, stored: string): boolean {
   const expected = Buffer.from(parts[2], 'hex');
   let actual: Buffer;
   try {
+    // keylen is DERIVED from the stored hash (expected.length), NOT a hardcoded
+    // 64 — so hashes produced under any past/future SCRYPT_KEYLEN still verify.
     actual = crypto.scryptSync(password, salt, expected.length);
   } catch {
     return false;
   }
+  // Length-guard before timingSafeEqual (it throws on differing lengths), then a
+  // constant-time compare so a wrong password can't be found byte-by-byte.
   return (
     expected.length === actual.length && crypto.timingSafeEqual(expected, actual)
   );
@@ -87,10 +95,6 @@ export async function findUserByUsername(
   return one<UserRow>('SELECT * FROM users WHERE lower(username) = lower($1)', [
     username,
   ]);
-}
-
-export async function getUserById(id: number): Promise<UserRow | undefined> {
-  return one<UserRow>('SELECT * FROM users WHERE id = $1', [id]);
 }
 
 /** Create a user with a fresh password hash. Caller enforces the signup policy. */

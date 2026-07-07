@@ -19,8 +19,6 @@ export const PULLUP_CONFIG: RepProgramConfig = {
 /** The configured pullup program instance (state + CRUD + video). */
 export const pullupProgram = createRepProgram(PULLUP_CONFIG);
 
-export const PULLUP_PROGRAM_DAYS = PULLUP_CONFIG.programDays;
-
 export function listPullupSessions(userId: number): Promise<RepSession[]> {
   return pullupProgram.list(userId);
 }

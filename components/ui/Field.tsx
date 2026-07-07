@@ -8,8 +8,6 @@ const fieldBase =
   'placeholder:text-text-muted outline-none transition-colors focus:border-accent ' +
   'disabled:opacity-50';
 
-export const fieldClass = fieldBase;
-
 interface Shared {
   label?: ReactNode;
   hint?: ReactNode;

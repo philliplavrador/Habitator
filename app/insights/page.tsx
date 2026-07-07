@@ -4,43 +4,29 @@ import Card from '@/components/ui/Card';
 import ChartCard from '@/components/charts/ChartCard';
 import LineTrend from '@/components/charts/LineTrend';
 import BarBreakdown from '@/components/charts/BarBreakdown';
-import { chart } from '@/components/charts/theme';
+import { chart, weekdayColor } from '@/components/charts/theme';
 import { listActiveHabits, listAllHabits } from '@/lib/habits';
-import { getHabitStats, formatRate } from '@/lib/stats';
+import { getHabitStatsBatch, formatRate } from '@/lib/stats';
 import { listAllEntries } from '@/lib/entries';
 import { listFasts } from '@/lib/fasts';
-import { requireUserId } from '@/lib/auth';
+import { requirePageContext } from '@/lib/pageContext';
 import { computeFastStats } from '@/lib/fastStats';
 import { getPushupState } from '@/lib/pushups';
 import { getPullupState } from '@/lib/pullups';
 import { cumulativePasses, dayOfWeekBreakdown, perfectDays } from '@/lib/analytics';
-import { formatDuration, todayISO } from '@/lib/dates';
-import { getTimezone } from '@/lib/tz';
+import { formatDuration } from '@/lib/dates';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function weekdayColor(rate: number | null): string {
-  if (rate === null) return '#2a2f3a';
-  if (rate >= 67) return chart.pass;
-  if (rate >= 34) return chart.warn;
-  return chart.fail;
-}
-
 export default async function InsightsPage() {
-  const userId = await requireUserId();
-  const tz = getTimezone();
-  const today = todayISO(tz);
+  const { userId, tz, today } = await requirePageContext();
 
   const habits = await listActiveHabits(userId);
-  const rows = (
-    await Promise.all(
-      habits.map(async (habit) => ({
-        habit,
-        stats: await getHabitStats(userId, habit.id),
-      }))
-    )
-  ).sort((a, b) => {
+  const statsByHabit = await getHabitStatsBatch(userId, habits);
+  const rows = habits
+    .map((habit) => ({ habit, stats: statsByHabit.get(habit.id)! }))
+    .sort((a, b) => {
     const ra = a.stats.completionRate ?? -1;
     const rb = b.stats.completionRate ?? -1;
     if (rb !== ra) return rb - ra;

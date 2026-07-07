@@ -1,6 +1,7 @@
 import { getHabit } from './habits';
 import { listEntriesForHabitSince } from './entries';
-import type { Entry, HabitStats } from './types';
+import { many } from './db';
+import type { Entry, Habit, HabitStats } from './types';
 
 /**
  * Stats rules (mirror the owner's spreadsheet exactly):
@@ -82,6 +83,73 @@ export async function getCurrentStreak(
   habitId: number
 ): Promise<number> {
   return (await getHabitStats(userId, habitId)).currentStreak;
+}
+
+// ── Batched equivalents (Today / Insights) ──────────────────────────
+//
+// getHabitStatsBatch / getCurrentStreaksBatch are the BATCHED equivalents of
+// getHabitStats / getCurrentStreak: they replace the N+1 per-habit round-trips
+// with ONE user-scoped query, then run the SAME pure computeStats logic on each
+// habit's in-memory entries. They MUST stay in sync with the single-habit
+// functions above — the numbers are required to be identical.
+
+/**
+ * Load stats for many habits in a single query, keyed by habit id.
+ *
+ * One `SELECT ... WHERE user_id = $1 AND habit_id = ANY($2)` (still user-scoped)
+ * replaces one query per habit. Entries are grouped by habit_id in memory and
+ * each group is filtered to `date >= habit.start_date` (matching the per-habit
+ * `listEntriesForHabitSince` query), then fed to the existing `computeStats`.
+ * Result is numerically identical to calling getHabitStats(userId, habit) for
+ * each habit.
+ */
+export async function getHabitStatsBatch(
+  userId: number,
+  habits: Habit[]
+): Promise<Map<number, HabitStats>> {
+  const stats = new Map<number, HabitStats>();
+  if (habits.length === 0) return stats;
+
+  const ids = habits.map((h) => h.id);
+  // ORDER BY habit_id, date so each group already arrives ascending by date,
+  // which is the order computeStats/currentStreak assume.
+  const rows = await many<Entry & { user_id: number }>(
+    `SELECT * FROM entries WHERE user_id = $1 AND habit_id = ANY($2)
+     ORDER BY habit_id, date ASC`,
+    [userId, ids]
+  );
+
+  const byHabit = new Map<number, Entry[]>();
+  for (const row of rows) {
+    const list = byHabit.get(row.habit_id);
+    if (list) list.push(row);
+    else byHabit.set(row.habit_id, [row]);
+  }
+
+  for (const habit of habits) {
+    const entries = (byHabit.get(habit.id) ?? []).filter(
+      (e) => e.date >= habit.start_date
+    );
+    stats.set(habit.id, computeStats(entries));
+  }
+  return stats;
+}
+
+/**
+ * Current streak for many habits in a single query, keyed by habit id. Batched
+ * equivalent of getCurrentStreak — reuses the same computeStats streak logic via
+ * getHabitStatsBatch so the value can't drift from the single-habit version.
+ */
+export async function getCurrentStreaksBatch(
+  userId: number,
+  habits: Habit[]
+): Promise<Map<number, number>> {
+  const stats = await getHabitStatsBatch(userId, habits);
+  const streaks = new Map<number, number>();
+  for (const habit of habits) {
+    streaks.set(habit.id, stats.get(habit.id)?.currentStreak ?? 0);
+  }
+  return streaks;
 }
 
 /** Format a completion rate (0..1 or null) as a display string. */

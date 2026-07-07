@@ -7,8 +7,18 @@ import { verifySession } from '@/lib/session';
  * Every request except the public ones below must carry a `session` cookie
  * holding a valid signed token (issued at login, keyed by SESSION_SECRET). The
  * signature + expiry are verified here in the Edge runtime via Web Crypto
- * (lib/session.ts). We only check that the token is valid — the actual user id
- * is decoded again in the Node handlers/pages (getCurrentUserId).
+ * (lib/session.ts). We only check that the signature is valid — we deliberately
+ * do NOT decode the uid here; the actual user id is decoded again in the Node
+ * handlers/pages (getCurrentUserId).
+ *
+ * FAIL-CLOSED on missing secret: if SESSION_SECRET is unset, `payload` below is
+ * forced to null for every request, so nothing ever authenticates — pages
+ * bounce to /login (a redirect loop, since /login can't authenticate you
+ * either) and every API returns 401. It fails silently: no error is thrown or
+ * logged, so a total lockout looks like "auth is just broken." If you're
+ * debugging a site-wide login loop or blanket 401s, check SESSION_SECRET is set
+ * on the running instance FIRST — and note it must be the *same* value that
+ * signed the cookies (a rotated secret invalidates every existing session).
  *
  * Static assets and the login flow are excluded so an unauthenticated browser
  * can still render the login page and load its CSS/icons.

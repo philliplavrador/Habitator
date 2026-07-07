@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ANKI, getAnkiState, listAnkiDays, setAnkiDay } from '@/lib/anki';
 import { getCurrentUserId } from '@/lib/auth';
+import { readJson, unauthorized } from '@/lib/apiRoute';
 import { parseAnkiDayInput } from '@/lib/validate';
 import { compareISO, todayISO } from '@/lib/dates';
 import { getTimezone } from '@/lib/tz';
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
 // GET /api/anki → the computed tracker state plus the full day log.
 export async function GET() {
   const userId = await getCurrentUserId();
-  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (userId === null) return unauthorized();
 
   const tz = getTimezone();
   return NextResponse.json({
@@ -24,12 +25,10 @@ export async function GET() {
 // (one row per date; date defaults to today). Returns the day + fresh state.
 export async function POST(req: NextRequest) {
   const userId = await getCurrentUserId();
-  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (userId === null) return unauthorized();
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
+  const body = await readJson(req);
+  if (body === undefined) {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 });
   }
 

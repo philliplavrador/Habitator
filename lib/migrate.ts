@@ -8,8 +8,14 @@
 //      row from it into Postgres under Fifi, preserving ids,
 //   3. records a flag so it never runs again.
 //
-// Everything (row copy + flag) happens in ONE transaction, so it either fully
-// succeeds or leaves Postgres untouched — you can never end up half-migrated.
+// The row copy + the `sqlite_migrated` flag happen in ONE explicit transaction
+// (BEGIN…COMMIT in runMigrationOnce), so the DATA import is all-or-nothing: it
+// either fully succeeds or rolls back leaving the tables untouched — you can
+// never end up with a half-copied dataset. NOTE the one thing OUTSIDE that
+// transaction: ensureFifi() runs BEFORE the BEGIN, so its user INSERT
+// auto-commits on its own. A failed migration can therefore leave the Fifi
+// account created with no data — harmless and idempotent (ON CONFLICT DO
+// NOTHING), and the flag is NOT set, so the next boot retries the copy.
 // The SQLite file is only READ; it's left in place as a backup.
 //
 // SERVER-ONLY (better-sqlite3 + node:fs). Imported dynamically by lib/db.ts.
@@ -19,6 +25,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import type { PoolClient } from 'pg';
 import { hashPassword } from './auth';
+import { dataDir } from './db';
 
 const MIGRATION_FLAG = 'sqlite_migrated';
 const FIFI_USERNAME = 'Fifi';
@@ -29,11 +36,22 @@ const FIFI_USERNAME = 'Fifi';
 const FIFI_PASSWORD_HASH =
   'scrypt$85baa56a20eec4879753a3022b29f37e$829e581bc8a60b495d0236e0adbfd4d42fe11ba86b76124e592ff3f8b8124e770fa3efa7d609e7c755a19fa92f0cc10ba3763554894ef5567ba9e2f84d3fed08';
 
-/** Where the old SQLite file lived (Railway volume in prod, ./data locally). */
+/**
+ * Where the old SQLite file lived (Railway volume in prod, ./data locally).
+ *
+ * Resolution matches lib/db.ts `dataDir()` so the migration SOURCE and the
+ * uploads directory never disagree:
+ *   • DATABASE_PATH set  → that exact file (documented config; byte-identical to
+ *     before, and dataDir() derives its base from dirname(DATABASE_PATH)).
+ *   • DATABASE_PATH unset → `<dataDir()>/habitator.db`, so a DATA_DIR-only setup
+ *     (which dataDir honors but the old sqlitePath ignored) now resolves to the
+ *     same volume as the uploads. With neither var set this is cwd/data/
+ *     habitator.db — identical to the previous fallback.
+ */
 function sqlitePath(): string {
   const fromEnv = process.env.DATABASE_PATH;
   if (fromEnv && fromEnv.trim() !== '') return fromEnv;
-  return path.join(process.cwd(), 'data', 'habitator.db');
+  return path.join(dataDir(), 'habitator.db');
 }
 
 /** Ensure the Fifi account exists; return its id. Never overwrites an existing one. */
@@ -95,7 +113,10 @@ async function copyTable(
   }
 
   // Bump the SERIAL sequence past the largest migrated id so future inserts
-  // don't collide with the preserved ids.
+  // don't collide with the preserved ids. SAFE ONLY because of the
+  // `rows.length === 0` early-return above: on an empty table `SELECT MAX(id)`
+  // is NULL, and setval(seq, NULL, true) would throw — so we must never reach
+  // this line with zero rows.
   await client.query(
     `SELECT setval(pg_get_serial_sequence($1, 'id'),
                    (SELECT MAX(id) FROM ${table}), true)`,

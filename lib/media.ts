@@ -20,6 +20,10 @@ import type { RepProgramKey } from './types';
  */
 export const MAX_VIDEO_BYTES = 80 * 1024 * 1024; // 80 MB
 
+// These three tables are three views of the same ext↔MIME mapping and can drift
+// out of sync (e.g. adding a format to one but not the others). They'd ideally
+// collapse to a single source of truth — one `{ ext, mime }[]` the sets/records
+// derive from. Until then, edit all three together.
 const ALLOWED_EXT = new Set([
   'mp4', 'm4v', 'mov', 'webm', 'mkv', 'ogv', 'ogg', 'avi', '3gp',
 ]);
@@ -113,7 +117,15 @@ export async function saveVideo(
   return filename;
 }
 
-/** Best-effort delete of a stored video; missing files are ignored. */
+/**
+ * Best-effort delete of a stored video; missing files are ignored.
+ *
+ * CRASH-SAFETY CONTRACT with callers (lib/repRoute.ts): the route handlers
+ * commit the DB row change FIRST — clearing/repointing the `video` column — and
+ * only THEN call this to unlink the old bytes. A crash in that window orphans a
+ * file (harmless, cleanable) instead of leaving a row pointing at a deleted
+ * file. Keep that ordering; never unlink before the row is committed.
+ */
 export function deleteVideoFile(filename: string | null | undefined): void {
   if (!filename) return;
   const n = safeName(filename);

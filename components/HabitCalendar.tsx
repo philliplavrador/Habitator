@@ -43,6 +43,10 @@ function monthLabel(month: string): string {
 /** Cells for a month grid: leading nulls for the first weekday, then each day. */
 function monthCells(month: string): (string | null)[] {
   const [y, m] = month.split('-').map(Number);
+  // Days in `month`. `m` is 1-based (Jan=1), and JS months are 0-based, so `m`
+  // is really "next month"; day 0 of next month = the last day of `month`.
+  // (The usual -1 to convert to a 0-based index is intentionally omitted — it's
+  // what makes this land on the previous month's last day = days-in-month.)
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const lead = weekdayOf(`${month}-01`);
   const cells: (string | null)[] = Array(lead).fill(null);

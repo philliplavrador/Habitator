@@ -7,16 +7,12 @@ import {
 } from '@/lib/habits';
 import { getHabitStats } from '@/lib/stats';
 import { getCurrentUserId } from '@/lib/auth';
+import { parseId, readJson, unauthorized } from '@/lib/apiRoute';
 import { parseHabitInput } from '@/lib/validate';
 import { getTimezone } from '@/lib/tz';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-function parseId(raw: string): number | null {
-  const id = Number(raw);
-  return Number.isInteger(id) && id > 0 ? id : null;
-}
 
 // GET /api/habits/[id] → habit + stats
 export async function GET(
@@ -24,7 +20,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const userId = await getCurrentUserId();
-  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (userId === null) return unauthorized();
   const id = parseId(params.id);
   if (id === null) return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
 
@@ -42,14 +38,12 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const userId = await getCurrentUserId();
-  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (userId === null) return unauthorized();
   const id = parseId(params.id);
   if (id === null) return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
+  const body = await readJson(req);
+  if (body === undefined) {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 });
   }
 
@@ -81,7 +75,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   const userId = await getCurrentUserId();
-  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (userId === null) return unauthorized();
   const id = parseId(params.id);
   if (id === null) return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
 

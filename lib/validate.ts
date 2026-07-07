@@ -26,6 +26,27 @@ function asString(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
+/** Narrow an unknown request body to a plain object, or null if it isn't one. */
+function asObject(body: unknown): Record<string, unknown> | null {
+  return typeof body === 'object' && body !== null
+    ? (body as Record<string, unknown>)
+    : null;
+}
+
+/** Coerce to a finite number within [min, max], or null. */
+function coerceNumber(v: unknown, min: number, max: number): number | null {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n) || n < min || n > max) return null;
+  return n;
+}
+
+/** Coerce to an integer within [min, max], or null. */
+function coerceInt(v: unknown, min: number, max: number): number | null {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isInteger(n) || n < min || n > max) return null;
+  return n;
+}
+
 /**
  * Validate/normalize a habit create/update payload.
  * - name is required (trimmed, non-empty, capped length)
@@ -33,10 +54,8 @@ function asString(v: unknown): string {
  * - start_date defaults to today (in the owner's `tz`); must be a valid YYYY-MM-DD
  */
 export function parseHabitInput(body: unknown, tz: string): ParseResult<HabitInput> {
-  if (typeof body !== 'object' || body === null) {
-    return { ok: false, error: 'Expected a JSON object.' };
-  }
-  const b = body as Record<string, unknown>;
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
 
   const name = asString(b.name).trim();
   if (name.length === 0) return { ok: false, error: 'Name is required.' };
@@ -57,10 +76,7 @@ export function parseHabitInput(body: unknown, tz: string): ParseResult<HabitInp
 // ── Fasting ─────────────────────────────────────────────────────────
 
 function parseGoalHours(v: unknown): number | null {
-  const n = typeof v === 'number' ? v : Number(v);
-  if (!Number.isFinite(n)) return null;
-  if (n < MIN_GOAL_HOURS || n > MAX_GOAL_HOURS) return null;
-  return n;
+  return coerceNumber(v, MIN_GOAL_HOURS, MAX_GOAL_HOURS);
 }
 
 const windowError = `A fast must be between ${MIN_GOAL_HOURS} and ${MAX_GOAL_HOURS} hours long.`;
@@ -73,10 +89,8 @@ const windowError = `A fast must be between ${MIN_GOAL_HOURS} and ${MAX_GOAL_HOU
  * `start_at` defaults to now; `note` defaults to ''.
  */
 export function parseStartFastInput(body: unknown): ParseResult<StartFastInput> {
-  if (typeof body !== 'object' || body === null) {
-    return { ok: false, error: 'Expected a JSON object.' };
-  }
-  const b = body as Record<string, unknown>;
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
 
   const rawStart = asString(b.start_at).trim();
   const start_at = rawStart === '' ? nowISO() : rawStart;
@@ -122,10 +136,8 @@ export function parseStartFastInput(body: unknown): ParseResult<StartFastInput> 
  * explicitly re-opens a fast; omitting it leaves the field unchanged.
  */
 export function parseUpdateFastInput(body: unknown): ParseResult<UpdateFastInput> {
-  if (typeof body !== 'object' || body === null) {
-    return { ok: false, error: 'Expected a JSON object.' };
-  }
-  const b = body as Record<string, unknown>;
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
   const out: UpdateFastInput = {};
 
   if ('goal_hours' in b) {
@@ -193,17 +205,16 @@ const MAX_REPS = 1000; // absurd upper bound to reject fat-finger input
  * integers, each within a sane bound. Both programs use 3 sets.
  */
 export function parseRepSets(body: unknown, sets = 3): ParseResult<number[]> {
-  if (typeof body !== 'object' || body === null) {
-    return { ok: false, error: 'Expected a JSON object.' };
-  }
-  const raw = (body as Record<string, unknown>).reps;
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
+  const raw = b.reps;
   if (!Array.isArray(raw) || raw.length !== sets) {
     return { ok: false, error: `reps must be an array of ${sets} numbers.` };
   }
   const reps: number[] = [];
   for (const v of raw) {
-    const n = typeof v === 'number' ? v : Number(v);
-    if (!Number.isInteger(n) || n < 0 || n > MAX_REPS) {
+    const n = coerceInt(v, 0, MAX_REPS);
+    if (n === null) {
       return { ok: false, error: `Each set's reps must be a whole number 0–${MAX_REPS}.` };
     }
     reps.push(n);
@@ -216,9 +227,7 @@ export function parseRepSets(body: unknown, sets = 3): ParseResult<number[]> {
 const MAX_NEW_CARDS = 10000; // absurd upper bound to reject fat-finger input
 
 function parseNewCards(v: unknown): number | null {
-  const n = typeof v === 'number' ? v : Number(v);
-  if (!Number.isInteger(n) || n < 0 || n > MAX_NEW_CARDS) return null;
-  return n;
+  return coerceInt(v, 0, MAX_NEW_CARDS);
 }
 
 const newCardsError = `new_cards must be a whole number 0–${MAX_NEW_CARDS}.`;
@@ -231,10 +240,8 @@ export function parseAnkiDayInput(
   body: unknown,
   tz: string
 ): ParseResult<AnkiDayInput> {
-  if (typeof body !== 'object' || body === null) {
-    return { ok: false, error: 'Expected a JSON object.' };
-  }
-  const b = body as Record<string, unknown>;
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
 
   const rawDate = asString(b.date).trim();
   const date = rawDate === '' ? todayISO(tz) : rawDate;
@@ -250,10 +257,9 @@ export function parseAnkiDayInput(
 
 /** Validate just the `new_cards` field — for PATCH /api/anki/[id]. */
 export function parseNewCardsField(body: unknown): ParseResult<number> {
-  if (typeof body !== 'object' || body === null) {
-    return { ok: false, error: 'Expected a JSON object.' };
-  }
-  const new_cards = parseNewCards((body as Record<string, unknown>).new_cards);
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
+  const new_cards = parseNewCards(b.new_cards);
   if (new_cards === null) return { ok: false, error: newCardsError };
   return { ok: true, value: new_cards };
 }

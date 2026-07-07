@@ -30,6 +30,11 @@ function bytesToB64url(bytes: Uint8Array): string {
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 function b64urlToBytes(s: string): Uint8Array<ArrayBuffer> {
+  // Re-pad the (unpadded) base64url before atob. `'==='.slice((s.length+3)%4)`
+  // yields the exact number of '=' needed: len%4 → pad  (0→0, 2→2, 3→1); the
+  // len%4===1 case is invalid base64 and produces 3 pads, which atob rejects.
+  // Runs on BOTH the Edge middleware and Node handlers, so it must stay pure
+  // Web APIs (atob/btoa) — don't "fix" this with Buffer.
   const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4);
   const bin = atob(b64);
   const out = new Uint8Array(new ArrayBuffer(bin.length));

@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteAnkiDay, getAnkiState, updateAnkiDay } from '@/lib/anki';
 import { getCurrentUserId } from '@/lib/auth';
+import { parseId, readJson, unauthorized } from '@/lib/apiRoute';
 import { parseNewCardsField } from '@/lib/validate';
 import { getTimezone } from '@/lib/tz';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-function parseId(v: string): number | null {
-  const n = Number(v);
-  return Number.isInteger(n) && n > 0 ? n : null;
-}
 
 // PATCH /api/anki/[id]  body { new_cards } → edit a logged day's count.
 export async function PATCH(
@@ -18,16 +14,14 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const userId = await getCurrentUserId();
-  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (userId === null) return unauthorized();
   const id = parseId(params.id);
   if (id === null) {
-    return NextResponse.json({ error: 'Bad day id.' }, { status: 400 });
+    return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
+  const body = await readJson(req);
+  if (body === undefined) {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 });
   }
 
@@ -52,10 +46,10 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   const userId = await getCurrentUserId();
-  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (userId === null) return unauthorized();
   const id = parseId(params.id);
   if (id === null) {
-    return NextResponse.json({ error: 'Bad day id.' }, { status: 400 });
+    return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
   }
 
   const removed = await deleteAnkiDay(userId, id);

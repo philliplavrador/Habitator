@@ -23,76 +23,83 @@ async function asError(res: Response): Promise<never> {
   throw new Error(message);
 }
 
+// Shared transport: one place for the JSON header, body encoding, and the
+// `!res.ok → asError` contract. A JSON `Content-Type` (and JSON.stringify) is
+// applied only for plain bodies; `FormData` is passed through untouched so the
+// browser sets its own multipart boundary. Omit `body` for GET/DELETE.
+async function request(
+  url: string,
+  method: string,
+  body?: unknown
+): Promise<Response> {
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    if (body instanceof FormData) {
+      init.body = body;
+    } else {
+      init.headers = { 'Content-Type': 'application/json' };
+      init.body = JSON.stringify(body);
+    }
+  }
+  const res = await fetch(url, init);
+  if (!res.ok) await asError(res);
+  return res;
+}
+
+/** Read one envelope key (.habit/.fast/.state/…) off a JSON response. */
+async function unwrap<T>(res: Response, key: string): Promise<T> {
+  return (await res.json())[key] as T;
+}
+
+/** `request` + `unwrap`: the common JSON-in / `{ [key]: T }`-out call. */
+async function requestJson<T>(
+  url: string,
+  method: string,
+  key: string,
+  body?: unknown
+): Promise<T> {
+  return unwrap<T>(await request(url, method, body), key);
+}
+
 export async function apiSetEntry(
   habitId: number,
   date: string,
   status: EntryStatus
 ): Promise<void> {
-  const res = await fetch('/api/entries', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ habitId, date, status }),
-  });
-  if (!res.ok) await asError(res);
+  await request('/api/entries', 'POST', { habitId, date, status });
 }
 
 export async function apiClearEntry(habitId: number, date: string): Promise<void> {
-  const res = await fetch(
+  await request(
     `/api/entries?habitId=${habitId}&date=${encodeURIComponent(date)}`,
-    { method: 'DELETE' }
+    'DELETE'
   );
-  if (!res.ok) await asError(res);
 }
 
 export async function apiCreateHabit(input: HabitInput): Promise<Habit> {
-  const res = await fetch('/api/habits', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) await asError(res);
-  return (await res.json()).habit as Habit;
+  return requestJson<Habit>('/api/habits', 'POST', 'habit', input);
 }
 
 export async function apiUpdateHabit(id: number, input: HabitInput): Promise<Habit> {
-  const res = await fetch(`/api/habits/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) await asError(res);
-  return (await res.json()).habit as Habit;
+  return requestJson<Habit>(`/api/habits/${id}`, 'PATCH', 'habit', input);
 }
 
 export async function apiArchiveHabit(id: number, archived: boolean): Promise<void> {
-  const res = await fetch(`/api/habits/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ archived }),
-  });
-  if (!res.ok) await asError(res);
+  await request(`/api/habits/${id}`, 'PATCH', { archived });
 }
 
 export async function apiDeleteHabit(id: number): Promise<void> {
-  const res = await fetch(`/api/habits/${id}`, { method: 'DELETE' });
-  if (!res.ok) await asError(res);
+  await request(`/api/habits/${id}`, 'DELETE');
 }
 
 export async function apiLogout(): Promise<void> {
-  const res = await fetch('/api/logout', { method: 'POST' });
-  if (!res.ok) await asError(res);
+  await request('/api/logout', 'POST');
 }
 
 // ── Fasting ─────────────────────────────────────────────────────────
 
 export async function apiStartFast(input: StartFastInput): Promise<Fast> {
-  const res = await fetch('/api/fasts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) await asError(res);
-  return (await res.json()).fast as Fast;
+  return requestJson<Fast>('/api/fasts', 'POST', 'fast', input);
 }
 
 export async function apiEndFast(id: number, endAt: string): Promise<Fast> {
@@ -103,18 +110,11 @@ export async function apiUpdateFast(
   id: number,
   input: UpdateFastInput
 ): Promise<Fast> {
-  const res = await fetch(`/api/fasts/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) await asError(res);
-  return (await res.json()).fast as Fast;
+  return requestJson<Fast>(`/api/fasts/${id}`, 'PATCH', 'fast', input);
 }
 
 export async function apiDeleteFast(id: number): Promise<void> {
-  const res = await fetch(`/api/fasts/${id}`, { method: 'DELETE' });
-  if (!res.ok) await asError(res);
+  await request(`/api/fasts/${id}`, 'DELETE');
 }
 
 // ── Rep programs (pushups / pullups) ────────────────────────────────
@@ -124,13 +124,7 @@ export async function apiLogReps(
   program: RepProgramKey,
   reps: number[]
 ): Promise<RepProgramState> {
-  const res = await fetch(`/api/${program}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reps }),
-  });
-  if (!res.ok) await asError(res);
-  return (await res.json()).state as RepProgramState;
+  return requestJson<RepProgramState>(`/api/${program}`, 'POST', 'state', { reps });
 }
 
 export async function apiUpdateReps(
@@ -138,22 +132,19 @@ export async function apiUpdateReps(
   id: number,
   reps: number[]
 ): Promise<RepProgramState> {
-  const res = await fetch(`/api/${program}/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reps }),
-  });
-  if (!res.ok) await asError(res);
-  return (await res.json()).state as RepProgramState;
+  return requestJson<RepProgramState>(
+    `/api/${program}/${id}`,
+    'PATCH',
+    'state',
+    { reps }
+  );
 }
 
 export async function apiDeleteRepSession(
   program: RepProgramKey,
   id: number
 ): Promise<RepProgramState> {
-  const res = await fetch(`/api/${program}/${id}`, { method: 'DELETE' });
-  if (!res.ok) await asError(res);
-  return (await res.json()).state as RepProgramState;
+  return requestJson<RepProgramState>(`/api/${program}/${id}`, 'DELETE', 'state');
 }
 
 /** Attach or replace the optional video on a session. Returns fresh state. */
@@ -164,48 +155,41 @@ export async function apiUploadRepVideo(
 ): Promise<RepProgramState> {
   const fd = new FormData();
   fd.append('video', file);
-  const res = await fetch(`/api/${program}/${id}/video`, {
-    method: 'PUT',
-    body: fd,
-  });
-  if (!res.ok) await asError(res);
-  return (await res.json()).state as RepProgramState;
+  return requestJson<RepProgramState>(
+    `/api/${program}/${id}/video`,
+    'PUT',
+    'state',
+    fd
+  );
 }
 
 export async function apiDeleteRepVideo(
   program: RepProgramKey,
   id: number
 ): Promise<RepProgramState> {
-  const res = await fetch(`/api/${program}/${id}/video`, { method: 'DELETE' });
-  if (!res.ok) await asError(res);
-  return (await res.json()).state as RepProgramState;
+  return requestJson<RepProgramState>(
+    `/api/${program}/${id}/video`,
+    'DELETE',
+    'state'
+  );
 }
 
 // ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────
 
 /** Upsert one day's new-card count (date defaults to today server-side). */
 export async function apiLogAnki(date: string, newCards: number): Promise<AnkiState> {
-  const res = await fetch('/api/anki', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ date, new_cards: newCards }),
+  return requestJson<AnkiState>('/api/anki', 'POST', 'state', {
+    date,
+    new_cards: newCards,
   });
-  if (!res.ok) await asError(res);
-  return (await res.json()).state as AnkiState;
 }
 
 export async function apiUpdateAnkiDay(id: number, newCards: number): Promise<AnkiState> {
-  const res = await fetch(`/api/anki/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ new_cards: newCards }),
+  return requestJson<AnkiState>(`/api/anki/${id}`, 'PATCH', 'state', {
+    new_cards: newCards,
   });
-  if (!res.ok) await asError(res);
-  return (await res.json()).state as AnkiState;
 }
 
 export async function apiDeleteAnkiDay(id: number): Promise<AnkiState> {
-  const res = await fetch(`/api/anki/${id}`, { method: 'DELETE' });
-  if (!res.ok) await asError(res);
-  return (await res.json()).state as AnkiState;
+  return requestJson<AnkiState>(`/api/anki/${id}`, 'DELETE', 'state');
 }

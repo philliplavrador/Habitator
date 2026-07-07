@@ -60,7 +60,13 @@ export interface RepProgram {
 export function createRepProgram(config: RepProgramConfig): RepProgram {
   const t = config.table; // internal constant, never user input → safe to inline
 
-  // Rows store target/reps as JSON text; hydrate to the domain shape.
+  // Rows store target/reps as JSON text and `completed` as a 0/1 INTEGER — these
+  // shapes are the MIGRATION-FIDELITY invariant (see lib/db.ts SCHEMA notes):
+  // SQLite rows copy across verbatim, so hydrate MUST mirror them exactly —
+  // JSON.parse(target)/JSON.parse(reps) back into number[], and `completed === 1`
+  // back into a boolean. Don't "modernize" these columns to jsonb/boolean without
+  // migrating existing rows; the raw 0/1 also feeds the COUNT(completed = 1)
+  // progression queries below.
   function hydrate(row: unknown): RepSession {
     const r = row as {
       id: number;

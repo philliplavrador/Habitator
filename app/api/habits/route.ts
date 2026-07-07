@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHabit, listActiveHabits, listAllHabits } from '@/lib/habits';
 import { getCurrentUserId } from '@/lib/auth';
+import { readJson, unauthorized } from '@/lib/apiRoute';
 import { parseHabitInput } from '@/lib/validate';
 import { getTimezone } from '@/lib/tz';
 
@@ -11,9 +12,7 @@ export const dynamic = 'force-dynamic';
 // GET /api/habits?all=1     → every habit (incl. archived)
 export async function GET(req: NextRequest) {
   const userId = await getCurrentUserId();
-  if (userId === null) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (userId === null) return unauthorized();
   const all = req.nextUrl.searchParams.get('all');
   const habits = all ? await listAllHabits(userId) : await listActiveHabits(userId);
   return NextResponse.json({ habits });
@@ -22,14 +21,10 @@ export async function GET(req: NextRequest) {
 // POST /api/habits → create a habit
 export async function POST(req: NextRequest) {
   const userId = await getCurrentUserId();
-  if (userId === null) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  if (userId === null) return unauthorized();
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
+  const body = await readJson(req);
+  if (body === undefined) {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 });
   }
 

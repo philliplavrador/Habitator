@@ -6,18 +6,16 @@ import AnkiSummary from '@/components/AnkiSummary';
 import Footer from '@/components/Footer';
 import { listActiveHabits } from '@/lib/habits';
 import { statusMapForDate } from '@/lib/entries';
-import { getCurrentStreak } from '@/lib/stats';
+import { getCurrentStreaksBatch } from '@/lib/stats';
 import { getPushupState } from '@/lib/pushups';
 import { getPullupState } from '@/lib/pullups';
 import { getAnkiState } from '@/lib/anki';
-import { requireUserId } from '@/lib/auth';
+import { requirePageContext } from '@/lib/pageContext';
 import {
   addDays,
   compareISO,
   isValidISODate,
-  todayISO,
 } from '@/lib/dates';
-import { getTimezone } from '@/lib/tz';
 import type { HabitDayView } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -28,9 +26,7 @@ export default async function TodayPage({
 }: {
   searchParams: { date?: string };
 }) {
-  const userId = await requireUserId();
-  const tz = getTimezone();
-  const today = todayISO(tz);
+  const { userId, tz, today } = await requirePageContext();
 
   // Selected date: validate, and never allow navigating past today.
   let selected = searchParams.date ?? today;
@@ -42,13 +38,12 @@ export default async function TodayPage({
   const activeHabits = (await listActiveHabits(userId)).filter(
     (h) => compareISO(h.start_date, selected) <= 0
   );
-  const items: HabitDayView[] = await Promise.all(
-    activeHabits.map(async (habit) => ({
-      habit,
-      status: statusMap.get(habit.id) ?? null,
-      currentStreak: await getCurrentStreak(userId, habit.id),
-    }))
-  );
+  const streaks = await getCurrentStreaksBatch(userId, activeHabits);
+  const items: HabitDayView[] = activeHabits.map((habit) => ({
+    habit,
+    status: statusMap.get(habit.id) ?? null,
+    currentStreak: streaks.get(habit.id) ?? 0,
+  }));
 
   const prevDate = addDays(selected, -1);
   const nextDate = compareISO(selected, today) < 0 ? addDays(selected, 1) : null;

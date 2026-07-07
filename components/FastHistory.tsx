@@ -1,11 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import StatTile from '@/components/ui/StatTile';
-import Button from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
-import { useConfirm } from '@/components/ui/confirm';
+import EditableHistoryRow from '@/components/EditableHistoryRow';
 import { apiDeleteFast, apiUpdateFast } from '@/lib/client';
 import {
   formatDateTime,
@@ -64,12 +62,6 @@ export default function FastHistory({ fasts, stats, tz }: Props) {
 }
 
 function FastRow({ fast, tz }: { fast: Fast; tz: string }) {
-  const router = useRouter();
-  const confirm = useConfirm();
-  const [editing, setEditing] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const [start, setStart] = useState(() => toLocalInputValue(fast.start_at, tz));
   const [end, setEnd] = useState(() => toLocalInputValue(fast.end_at as string, tz));
   const [goal, setGoal] = useState(String(fast.goal_hours));
@@ -80,62 +72,58 @@ function FastRow({ fast, tz }: { fast: Fast; tz: string }) {
   async function handleSave() {
     const goalNum = Number(goal);
     if (!Number.isFinite(goalNum) || goalNum <= 0) {
-      setError('Enter a valid goal.');
-      return;
+      throw new Error('Enter a valid goal.');
     }
     // Validate the raw datetime-local strings BEFORE constructing Dates — an
     // empty/invalid field makes new Date(..).toISOString() throw a RangeError.
     const startMs = Date.parse(start);
     const endMs = Date.parse(end);
     if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
-      setError('Enter valid start and end times.');
-      return;
+      throw new Error('Enter valid start and end times.');
     }
     if (endMs < startMs) {
-      setError('End cannot be before start.');
-      return;
+      throw new Error('End cannot be before start.');
     }
     const startISO = new Date(startMs).toISOString();
     const endISO = new Date(endMs).toISOString();
-    setBusy(true);
-    setError(null);
-    try {
-      await apiUpdateFast(fast.id, {
-        start_at: startISO,
-        end_at: endISO,
-        goal_hours: goalNum,
-      });
-      setEditing(false);
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleDelete() {
-    const ok = await confirm({
-      title: 'Delete this fast?',
-      message: 'This cannot be undone.',
-      confirmLabel: 'Delete',
-      danger: true,
+    await apiUpdateFast(fast.id, {
+      start_at: startISO,
+      end_at: endISO,
+      goal_hours: goalNum,
     });
-    if (!ok) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await apiDeleteFast(fast.id);
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not delete.');
-      setBusy(false);
-    }
   }
 
-  if (editing) {
-    return (
-      <li className="rounded-card border border-border bg-surface p-3 shadow-card">
+  return (
+    <EditableHistoryRow
+      flatRead
+      confirmCopy={{
+        title: 'Delete this fast?',
+        message: 'This cannot be undone.',
+        confirmLabel: 'Delete',
+      }}
+      onSave={handleSave}
+      onDelete={() => apiDeleteFast(fast.id)}
+      read={
+        <>
+          <div className="flex items-center gap-2">
+            <span className="text-base font-bold text-text-primary">
+              {formatDuration(hours)}
+            </span>
+            {hit && (
+              <span className="rounded-btn bg-pass/15 px-1.5 py-0.5 text-xs font-semibold text-pass">
+                ✓ goal
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs text-text-muted">
+            {formatDateTime(fast.start_at, tz)} → {formatDateTime(fast.end_at as string, tz)}
+          </p>
+          <p className="text-xs text-text-muted">
+            Goal {formatDuration(fast.goal_hours)}
+          </p>
+        </>
+      }
+      editForm={
         <div className="flex flex-col gap-3">
           <Field
             label="Start"
@@ -158,62 +146,8 @@ function FastRow({ fast, tz }: { fast: Fast; tz: string }) {
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
           />
-
-          {error && <p className="text-sm text-fail">{error}</p>}
-
-          <div className="flex gap-2">
-            <Button size="sm" fullWidth onClick={handleSave} loading={busy}>
-              Save
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              fullWidth
-              onClick={() => {
-                setEditing(false);
-                setError(null);
-              }}
-              disabled={busy}
-            >
-              Cancel
-            </Button>
-          </div>
         </div>
-      </li>
-    );
-  }
-
-  return (
-    <li className="rounded-card border border-border bg-surface p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-base font-bold text-text-primary">
-              {formatDuration(hours)}
-            </span>
-            {hit && (
-              <span className="rounded-btn bg-pass/15 px-1.5 py-0.5 text-xs font-semibold text-pass">
-                ✓ goal
-              </span>
-            )}
-          </div>
-          <p className="mt-0.5 text-xs text-text-muted">
-            {formatDateTime(fast.start_at, tz)} → {formatDateTime(fast.end_at as string, tz)}
-          </p>
-          <p className="text-xs text-text-muted">
-            Goal {formatDuration(fast.goal_hours)}
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-1">
-          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
-            Edit
-          </Button>
-          <Button size="sm" variant="danger" onClick={handleDelete} disabled={busy}>
-            Delete
-          </Button>
-        </div>
-      </div>
-      {error && <p className="mt-2 text-sm text-fail">{error}</p>}
-    </li>
+      }
+    />
   );
 }

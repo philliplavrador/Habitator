@@ -2,6 +2,10 @@
 // query helpers) that produce plain, serializable data for the chart client
 // components. No DB access here — callers pass the rows in. Reuses lib/dates
 // so day/week math and timezone handling stay consistent with the rest of the app.
+//
+// Rate-scale contract: this module emits completion rates as 0..100 percents
+// (see RatePoint / WeekdayPoint), whereas lib/stats.ts emits 0..1 fractions.
+// Keep that boundary in mind when moving values between the two.
 
 import {
   addDays,
@@ -140,6 +144,32 @@ function completedFasts(fasts: Fast[]): Fast[] {
     .sort((a, b) => compareISO(a.start_at, b.start_at));
 }
 
+export interface CompletedFast {
+  fast: Fast;
+  hours: number; // exact fractional length (unrounded hoursBetween)
+  localStart: string; // start_at as local wall-clock (YYYY-MM-DDTHH:mm); '' when tz omitted
+  hit: boolean; // hours >= goal_hours
+}
+
+/**
+ * The shared "which fasts are done, how long, did they hit goal" derivation:
+ * completed fasts (end_at set) in chronological order, each with its exact
+ * hours, local start wall-clock, and goal-hit flag. Feeds every fast aggregate
+ * below and lib/fastStats so the completed/hours/hit logic lives in one place.
+ * `tz` is only needed for `localStart`; callers that don't read it can omit it.
+ */
+export function completedFastHours(fasts: Fast[], tz?: string): CompletedFast[] {
+  return completedFasts(fasts).map((f) => {
+    const hours = hoursBetween(f.start_at, f.end_at as string);
+    return {
+      fast: f,
+      hours,
+      localStart: tz ? toLocalInputValue(f.start_at, tz) : '',
+      hit: hours >= f.goal_hours,
+    };
+  });
+}
+
 export interface FastDurationPoint {
   start_at: string;
   label: string; // short date label for the axis
@@ -150,17 +180,13 @@ export interface FastDurationPoint {
 
 /** One point per completed fast, chronological. */
 export function fastDurationSeries(fasts: Fast[], tz: string): FastDurationPoint[] {
-  return completedFasts(fasts).map((f) => {
-    const hours = hoursBetween(f.start_at, f.end_at as string);
-    const localDay = toLocalInputValue(f.start_at, tz).slice(5, 10); // MM-DD
-    return {
-      start_at: f.start_at,
-      label: localDay,
-      hours: Math.round(hours * 10) / 10,
-      goal_hours: f.goal_hours,
-      hit: hours >= f.goal_hours,
-    };
-  });
+  return completedFastHours(fasts, tz).map(({ fast, hours, localStart, hit }) => ({
+    start_at: fast.start_at,
+    label: localStart.slice(5, 10), // MM-DD
+    hours: Math.round(hours * 10) / 10,
+    goal_hours: fast.goal_hours,
+    hit,
+  }));
 }
 
 export interface HistogramBin {
@@ -172,9 +198,7 @@ export interface HistogramBin {
 
 /** Bucket completed-fast durations into fixed-width bins. */
 export function durationHistogram(fasts: Fast[], binHours = 4): HistogramBin[] {
-  const hours = completedFasts(fasts).map((f) =>
-    hoursBetween(f.start_at, f.end_at as string)
-  );
+  const hours = completedFastHours(fasts).map((c) => c.hours);
   if (hours.length === 0) return [];
   const max = Math.max(...hours);
   const bins: HistogramBin[] = [];
@@ -195,8 +219,8 @@ export interface HourPoint {
 /** How many fasts started in each local hour of day (0..23). */
 export function startHourDistribution(fasts: Fast[], tz: string): HourPoint[] {
   const counts = new Array(24).fill(0);
-  for (const f of completedFasts(fasts)) {
-    const h = Number(toLocalInputValue(f.start_at, tz).slice(11, 13));
+  for (const { localStart } of completedFastHours(fasts, tz)) {
+    const h = Number(localStart.slice(11, 13));
     if (h >= 0 && h < 24) counts[h]++;
   }
   return counts.map((count, hour) => ({
@@ -211,18 +235,16 @@ export interface StreakStat {
   longest: number;
 }
 
-/** Consecutive local days covered by any completed fast (current run to today, and longest). */
-export function consecutiveFastingStreak(
-  fasts: Fast[],
-  tz: string,
-  today: string
-): StreakStat {
-  const days = new Set<string>();
-  for (const f of completedFasts(fasts)) {
-    const startDay = toLocalInputValue(f.start_at, tz).slice(0, 10);
-    const endDay = toLocalInputValue(f.end_at as string, tz).slice(0, 10);
-    for (const d of rangeDates(startDay, endDay)) days.add(d);
-  }
+/**
+ * Shared calendar-day streak walk over the DISTINCT set of covered local days:
+ * returns the longest consecutive run ever, plus the current run ending today
+ * (or yesterday when today isn't covered yet, so an in-progress day never reads
+ * as broken). Order-independent. Both attemptStreak (session days) and
+ * consecutiveFastingStreak (fast-covered days) build a Set and delegate here;
+ * this is deliberately NOT the same as stats.computeStats (list-position) or
+ * anki.computeStreak (daily-minimum + today-grace) semantics.
+ */
+function streakOverDays(days: Set<string>, today: string): StreakStat {
   // Longest run across all covered days.
   const sorted = [...days].sort();
   let longest = 0;
@@ -244,6 +266,21 @@ export function consecutiveFastingStreak(
   return { current, longest };
 }
 
+/** Consecutive local days covered by any completed fast (current run to today, and longest). */
+export function consecutiveFastingStreak(
+  fasts: Fast[],
+  tz: string,
+  today: string
+): StreakStat {
+  const days = new Set<string>();
+  for (const f of completedFasts(fasts)) {
+    const startDay = toLocalInputValue(f.start_at, tz).slice(0, 10);
+    const endDay = toLocalInputValue(f.end_at as string, tz).slice(0, 10);
+    for (const d of rangeDates(startDay, endDay)) days.add(d);
+  }
+  return streakOverDays(days, today);
+}
+
 // ── Rep programs (pushups / pullups) ────────────────────────────────
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -256,29 +293,7 @@ const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
  * an attempt, else at yesterday (so an in-progress day never reads as broken).
  */
 export function attemptStreak(dates: string[], today: string): StreakStat {
-  const set = new Set(dates);
-
-  // Longest run of consecutive attempted days, ever.
-  const sorted = [...set].sort();
-  let longest = 0;
-  let run = 0;
-  let prev: string | null = null;
-  for (const d of sorted) {
-    if (prev && addDays(prev, 1) === d) run++;
-    else run = 1;
-    if (run > longest) longest = run;
-    prev = d;
-  }
-
-  // Current run ending today (or yesterday if today isn't attempted yet).
-  let current = 0;
-  let cursor = set.has(today) ? today : addDays(today, -1);
-  while (set.has(cursor)) {
-    current++;
-    cursor = addDays(cursor, -1);
-  }
-
-  return { current, longest };
+  return streakOverDays(new Set(dates), today);
 }
 
 /**

@@ -152,11 +152,9 @@ export interface RepProgramState {
 /** A day's outcome in the session heatmap. */
 export type RepDayStatus = 'complete' | 'attempted';
 
-// Back-compat aliases — the pushup feature shipped under these names.
+// Back-compat alias — the pushup feature shipped under this name; still used
+// by lib/analytics.ts.
 export type PushupSession = RepSession;
-export type PushupState = RepProgramState;
-export type PullupSession = RepSession;
-export type PullupState = RepProgramState;
 
 // ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────
 
