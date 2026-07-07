@@ -74,6 +74,9 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   const [items, setItems] = useState<HabitDayView[]>(initialItems);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Completed habits are hidden by default; a scroll-down toggle reveals them so
+  // the active list stays uncluttered once the day's work is checked off.
+  const [showCompleted, setShowCompleted] = useState(false);
 
   // Habit ids with an in-flight write. A fresh server snapshot (from another
   // habit's router.refresh()) must not clobber a habit we just optimistically
@@ -302,49 +305,70 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
             </section>
           )}
 
-          {/* Completed archive — the whole block fades/slides in when the first
-              build habit is completed and out when the last is un-completed. */}
-          <AnimatePresence initial={false}>
-            {completedItems.length > 0 && (
-              <motion.section
-                key="completed"
+          {/* Completed archive — hidden behind a scroll-down toggle. The button
+              stays put; only the list expands/collapses so completed habits are
+              out of the way until you deliberately ask to see them. */}
+          {completedItems.length > 0 && (
+            <div className="mt-8">
+              <motion.button
+                type="button"
                 layout="position"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ layout: listSpring, opacity: { duration: 0.2 } }}
-                className="mt-8"
+                onClick={() => setShowCompleted((v) => !v)}
+                aria-expanded={showCompleted}
+                className="mx-auto flex items-center gap-1.5 rounded-btn px-3 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted active:opacity-70"
               >
-                <header className="mb-3 flex items-center gap-3 px-1">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                    Completed
-                  </span>
-                  <span className="text-xs tabular-nums text-text-muted">
-                    {completedItems.length}
-                  </span>
-                  <span aria-hidden className="h-px flex-1 bg-border" />
-                </header>
-                <motion.div
-                  role="list"
-                  aria-label="Completed habits"
-                  className="flex flex-col gap-2"
-                  layout="position"
+                <span>{showCompleted ? 'Hide' : 'Show'} completed</span>
+                <span className="tabular-nums">{completedItems.length}</span>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  className={`transition-transform ${showCompleted ? 'rotate-180' : ''}`}
                 >
-                  <AnimatePresence initial={false}>
-                    {completedItems.map((view) => (
-                      <MotionRow
-                        key={view.habit.id}
-                        view={view}
-                        zone="completed"
-                        busy={busyId === view.habit.id}
-                        onSetStatus={(next) => handleSet(view.habit.id, next)}
-                      />
-                    ))}
-                  </AnimatePresence>
-                </motion.div>
-              </motion.section>
-            )}
-          </AnimatePresence>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </motion.button>
+
+              <AnimatePresence initial={false}>
+                {showCompleted && (
+                  <motion.section
+                    key="completed"
+                    layout="position"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ layout: listSpring, opacity: { duration: 0.2 } }}
+                    className="mt-3 overflow-hidden"
+                  >
+                    <motion.div
+                      role="list"
+                      aria-label="Completed habits"
+                      className="flex flex-col gap-2"
+                      layout="position"
+                    >
+                      <AnimatePresence initial={false}>
+                        {completedItems.map((view) => (
+                          <MotionRow
+                            key={view.habit.id}
+                            view={view}
+                            zone="completed"
+                            busy={busyId === view.habit.id}
+                            onSetStatus={(next) => handleSet(view.habit.id, next)}
+                          />
+                        ))}
+                      </AnimatePresence>
+                    </motion.div>
+                  </motion.section>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
       )}
     </div>
