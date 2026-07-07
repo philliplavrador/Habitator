@@ -1,4 +1,4 @@
-import { db } from './db';
+import { many, one, run } from './db';
 import { addDays, compareISO, nowISO, rangeDates, todayISO } from './dates';
 import type { AnkiDay, AnkiDayInput, AnkiState } from './types';
 
@@ -16,61 +16,10 @@ export const ANKI = {
   startDate: '2026-07-04',
 } as const;
 
-// Study days that happened before the tracker existed. Seeded exactly once (see
-// seedOnce); INSERT OR IGNORE means this never clobbers a day already logged.
-const SEED_DAYS: AnkiDayInput[] = [
-  { date: '2026-07-04', new_cards: 50 },
-  { date: '2026-07-05', new_cards: 50 },
-];
-const SEED_KEY = 'anki_seeded';
-
-// ── Prepared statements ─────────────────────────────────────────────
-
-const stmtListDesc = db.prepare<[]>(`SELECT * FROM anki_days ORDER BY date DESC`);
-const stmtListAsc = db.prepare<[]>(`SELECT * FROM anki_days ORDER BY date ASC`);
-const stmtGetById = db.prepare<[number]>(`SELECT * FROM anki_days WHERE id = ?`);
-const stmtGetByDate = db.prepare<[string]>(`SELECT * FROM anki_days WHERE date = ?`);
-const stmtUpsert = db.prepare(
-  `INSERT INTO anki_days (date, new_cards, created_at)
-   VALUES (@date, @new_cards, @created_at)
-   ON CONFLICT (date) DO UPDATE SET new_cards = excluded.new_cards`
-);
-const stmtInsertIgnore = db.prepare(
-  `INSERT OR IGNORE INTO anki_days (date, new_cards, created_at)
-   VALUES (@date, @new_cards, @created_at)`
-);
-const stmtUpdateById = db.prepare(
-  `UPDATE anki_days SET new_cards = @new_cards WHERE id = @id`
-);
-const stmtDeleteById = db.prepare<[number]>(`DELETE FROM anki_days WHERE id = ?`);
-const stmtGetMeta = db.prepare<[string]>(`SELECT value FROM app_meta WHERE key = ?`);
-const stmtSetMeta = db.prepare(
-  `INSERT OR IGNORE INTO app_meta (key, value) VALUES (@key, @value)`
-);
-
-// ── One-time seed ───────────────────────────────────────────────────
-
-let seededThisProcess = false; // avoid a DB round-trip on every call
-
-/**
- * Insert the pre-tracker study days exactly once per database. Guarded by an
- * `app_meta` flag so a reboot never re-seeds and a later edit/delete is never
- * undone; INSERT OR IGNORE additionally protects against colliding with a day
- * the owner has already logged. The whole thing runs in a transaction so a
- * concurrent boot can't seed twice.
- */
-function seedOnce(): void {
-  if (seededThisProcess) return;
-  db.transaction(() => {
-    if (stmtGetMeta.get(SEED_KEY)) return; // already seeded in a prior run
-    const ts = nowISO();
-    for (const d of SEED_DAYS) {
-      stmtInsertIgnore.run({ date: d.date, new_cards: d.new_cards, created_at: ts });
-    }
-    stmtSetMeta.run({ key: SEED_KEY, value: '1' });
-  })();
-  seededThisProcess = true;
-}
+// The original owner's pre-tracker study days used to be seeded here on first
+// boot. They now live in the live database and migrate across to the Fifi
+// account, so there's no auto-seed anymore — every new user starts empty and
+// scoped queries keep the accounts separate.
 
 // ── Row hydration ───────────────────────────────────────────────────
 
@@ -79,44 +28,83 @@ function hydrate(row: unknown): AnkiDay {
   return { id: r.id, date: r.date, new_cards: r.new_cards, created_at: r.created_at };
 }
 
-// ── Public queries / mutations ──────────────────────────────────────
+// ── Public queries / mutations (all scoped to userId) ───────────────
 
 /** Every logged day, newest first. */
-export function listAnkiDays(): AnkiDay[] {
-  seedOnce();
-  return (stmtListDesc.all() as unknown[]).map(hydrate);
+export async function listAnkiDays(userId: number): Promise<AnkiDay[]> {
+  const rows = await many(
+    `SELECT * FROM anki_days WHERE user_id = $1 ORDER BY date DESC`,
+    [userId]
+  );
+  return rows.map(hydrate);
 }
 
-export function getAnkiDay(id: number): AnkiDay | undefined {
-  const row = stmtGetById.get(id);
+export async function getAnkiDay(
+  userId: number,
+  id: number
+): Promise<AnkiDay | undefined> {
+  const row = await one(
+    `SELECT * FROM anki_days WHERE id = $1 AND user_id = $2`,
+    [id, userId]
+  );
   return row ? hydrate(row) : undefined;
 }
 
-/** Upsert a day's new-card count (one row per date). */
-export function setAnkiDay(input: AnkiDayInput): AnkiDay {
-  seedOnce();
-  stmtUpsert.run({ date: input.date, new_cards: input.new_cards, created_at: nowISO() });
-  return hydrate(stmtGetByDate.get(input.date));
+/** Upsert a day's new-card count (one row per date, per user). */
+export async function setAnkiDay(
+  userId: number,
+  input: AnkiDayInput
+): Promise<AnkiDay> {
+  const row = await one(
+    `INSERT INTO anki_days (user_id, date, new_cards, created_at)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (user_id, date) DO UPDATE SET new_cards = EXCLUDED.new_cards
+     RETURNING *`,
+    [userId, input.date, input.new_cards, nowISO()]
+  );
+  return hydrate(row);
 }
 
 /** Update a day's count by id. Returns the fresh row, or undefined. */
-export function updateAnkiDay(id: number, newCards: number): AnkiDay | undefined {
-  if (!getAnkiDay(id)) return undefined;
-  stmtUpdateById.run({ id, new_cards: newCards });
-  return getAnkiDay(id);
+export async function updateAnkiDay(
+  userId: number,
+  id: number,
+  newCards: number
+): Promise<AnkiDay | undefined> {
+  const changed = await run(
+    `UPDATE anki_days SET new_cards = $1 WHERE id = $2 AND user_id = $3`,
+    [newCards, id, userId]
+  );
+  if (changed === 0) return undefined;
+  return getAnkiDay(userId, id);
 }
 
 /** Delete a day by id. Returns true if a row was removed. */
-export function deleteAnkiDay(id: number): boolean {
-  return stmtDeleteById.run(id).changes > 0;
+export async function deleteAnkiDay(
+  userId: number,
+  id: number
+): Promise<boolean> {
+  return (
+    (await run(`DELETE FROM anki_days WHERE id = $1 AND user_id = $2`, [
+      id,
+      userId,
+    ])) > 0
+  );
 }
 
 // ── State computation ───────────────────────────────────────────────
 
-/** Load every day, seed if needed, and compute the full tracker state. */
-export function getAnkiState(tz: string): AnkiState {
-  seedOnce();
-  const daysAsc = (stmtListAsc.all() as unknown[]).map(hydrate);
+/** Load every day for the user and compute the full tracker state. */
+export async function getAnkiState(
+  userId: number,
+  tz: string
+): Promise<AnkiState> {
+  const daysAsc = (
+    await many(
+      `SELECT * FROM anki_days WHERE user_id = $1 ORDER BY date ASC`,
+      [userId]
+    )
+  ).map(hydrate);
   return computeAnkiState(daysAsc, todayISO(tz));
 }
 

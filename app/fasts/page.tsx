@@ -6,6 +6,7 @@ import ChartCard from '@/components/charts/ChartCard';
 import BarBreakdown from '@/components/charts/BarBreakdown';
 import { chart } from '@/components/charts/theme';
 import { getActiveFast, listFasts } from '@/lib/fasts';
+import { requireUserId } from '@/lib/auth';
 import { computeFastStats } from '@/lib/fastStats';
 import {
   fastDurationSeries,
@@ -19,11 +20,12 @@ import { getTimezone } from '@/lib/tz';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export default function FastsPage() {
+export default async function FastsPage() {
+  const userId = await requireUserId();
   const tz = getTimezone();
   const today = todayISO(tz);
-  const active = getActiveFast() ?? null;
-  const fasts = listFasts();
+  const active = (await getActiveFast(userId)) ?? null;
+  const fasts = await listFasts(userId);
   const stats = computeFastStats(fasts);
 
   const durations = fastDurationSeries(fasts, tz).map((d) => ({

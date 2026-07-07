@@ -1,75 +1,104 @@
-import { db } from './db';
+import { many, one, run } from './db';
 import type { Entry, EntryStatus } from './types';
 
-const stmtGet = db.prepare<[number, string]>(
-  `SELECT * FROM entries WHERE habit_id = ? AND date = ?`
-);
-const stmtForDate = db.prepare<[string]>(
-  `SELECT * FROM entries WHERE date = ?`
-);
-const stmtForHabit = db.prepare<[number]>(
-  `SELECT * FROM entries WHERE habit_id = ? ORDER BY date ASC`
-);
-const stmtAll = db.prepare<[]>(`SELECT * FROM entries ORDER BY date ASC`);
-const stmtForHabitSince = db.prepare<[number, string]>(
-  `SELECT * FROM entries WHERE habit_id = ? AND date >= ? ORDER BY date ASC`
-);
-// Insert-or-replace the status for a (habit, date). UNIQUE(habit_id,date) makes
-// this an idempotent upsert.
-const stmtUpsert = db.prepare(
-  `INSERT INTO entries (habit_id, date, status, created_at)
-   VALUES (@habit_id, @date, @status, @created_at)
-   ON CONFLICT (habit_id, date)
-   DO UPDATE SET status = excluded.status`
-);
-const stmtClear = db.prepare<[number, string]>(
-  `DELETE FROM entries WHERE habit_id = ? AND date = ?`
-);
+// Entries carry their own `user_id` (scoping every query directly). The
+// (habit_id, date) uniqueness still guarantees one status per habit per day.
+// Callers that accept an untrusted habitId MUST first confirm the habit belongs
+// to the user (see the entries route) — this layer trusts its arguments.
 
 /** The single entry for a (habit, date), or undefined when the day is blank. */
-export function getEntry(habitId: number, date: string): Entry | undefined {
-  return stmtGet.get(habitId, date) as Entry | undefined;
+export async function getEntry(
+  userId: number,
+  habitId: number,
+  date: string
+): Promise<Entry | undefined> {
+  return one<Entry>(
+    `SELECT * FROM entries WHERE user_id = $1 AND habit_id = $2 AND date = $3`,
+    [userId, habitId, date]
+  );
 }
 
-/** All entries recorded on a given date (across habits). */
-export function listEntriesForDate(date: string): Entry[] {
-  return stmtForDate.all(date) as Entry[];
+/** All entries recorded on a given date (across the user's habits). */
+export async function listEntriesForDate(
+  userId: number,
+  date: string
+): Promise<Entry[]> {
+  return many<Entry>(`SELECT * FROM entries WHERE user_id = $1 AND date = $2`, [
+    userId,
+    date,
+  ]);
 }
 
 /** Map of habit_id → status for one date — handy for the Today screen. */
-export function statusMapForDate(date: string): Map<number, EntryStatus> {
+export async function statusMapForDate(
+  userId: number,
+  date: string
+): Promise<Map<number, EntryStatus>> {
   const map = new Map<number, EntryStatus>();
-  for (const e of listEntriesForDate(date)) map.set(e.habit_id, e.status);
+  for (const e of await listEntriesForDate(userId, date)) {
+    map.set(e.habit_id, e.status);
+  }
   return map;
 }
 
 /** Every entry for a habit, ascending by date. */
-export function listEntriesForHabit(habitId: number): Entry[] {
-  return stmtForHabit.all(habitId) as Entry[];
+export async function listEntriesForHabit(
+  userId: number,
+  habitId: number
+): Promise<Entry[]> {
+  return many<Entry>(
+    `SELECT * FROM entries WHERE user_id = $1 AND habit_id = $2 ORDER BY date ASC`,
+    [userId, habitId]
+  );
 }
 
-/** Every entry across all habits, ascending by date. For cross-habit analytics. */
-export function listAllEntries(): Entry[] {
-  return stmtAll.all() as Entry[];
+/** Every entry across all the user's habits, ascending by date. */
+export async function listAllEntries(userId: number): Promise<Entry[]> {
+  return many<Entry>(
+    `SELECT * FROM entries WHERE user_id = $1 ORDER BY date ASC`,
+    [userId]
+  );
 }
 
 /** Entries for a habit on/after `sinceDate`, ascending. */
-export function listEntriesForHabitSince(habitId: number, sinceDate: string): Entry[] {
-  return stmtForHabitSince.all(habitId, sinceDate) as Entry[];
+export async function listEntriesForHabitSince(
+  userId: number,
+  habitId: number,
+  sinceDate: string
+): Promise<Entry[]> {
+  return many<Entry>(
+    `SELECT * FROM entries WHERE user_id = $1 AND habit_id = $2 AND date >= $3
+     ORDER BY date ASC`,
+    [userId, habitId, sinceDate]
+  );
 }
 
 /** Set (create or overwrite) the pass/fail status for a (habit, date). */
-export function setEntry(habitId: number, date: string, status: EntryStatus): Entry {
-  stmtUpsert.run({
-    habit_id: habitId,
-    date,
-    status,
-    created_at: new Date().toISOString(),
-  });
-  return getEntry(habitId, date)!;
+export async function setEntry(
+  userId: number,
+  habitId: number,
+  date: string,
+  status: EntryStatus
+): Promise<Entry> {
+  await run(
+    `INSERT INTO entries (user_id, habit_id, date, status, created_at)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (habit_id, date) DO UPDATE SET status = EXCLUDED.status`,
+    [userId, habitId, date, status, new Date().toISOString()]
+  );
+  return (await getEntry(userId, habitId, date))!;
 }
 
 /** Clear a (habit, date) back to blank. Returns true if a row was removed. */
-export function clearEntry(habitId: number, date: string): boolean {
-  return stmtClear.run(habitId, date).changes > 0;
+export async function clearEntry(
+  userId: number,
+  habitId: number,
+  date: string
+): Promise<boolean> {
+  return (
+    (await run(
+      `DELETE FROM entries WHERE user_id = $1 AND habit_id = $2 AND date = $3`,
+      [userId, habitId, date]
+    )) > 0
+  );
 }

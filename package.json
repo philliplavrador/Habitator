@@ -16,6 +16,7 @@
     "canvas-confetti": "^1.9.4",
     "framer-motion": "^12.42.2",
     "next": "^14.2.35",
+    "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^3.9.2"
@@ -24,6 +25,7 @@
     "@types/better-sqlite3": "^7.6.12",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20.14.0",
+    "@types/pg": "^8.20.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",

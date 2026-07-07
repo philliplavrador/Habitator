@@ -6,7 +6,8 @@ import type {
   Fast,
   Habit,
   HabitInput,
-  PushupState,
+  RepProgramKey,
+  RepProgramState,
   StartFastInput,
   UpdateFastInput,
 } from './types';
@@ -116,35 +117,68 @@ export async function apiDeleteFast(id: number): Promise<void> {
   if (!res.ok) await asError(res);
 }
 
-// ── Pushups ─────────────────────────────────────────────────────────
+// ── Rep programs (pushups / pullups) ────────────────────────────────
+// All keyed by the program so the pushup and pullup screens share one client.
 
-export async function apiLogPushups(reps: number[]): Promise<PushupState> {
-  const res = await fetch('/api/pushups', {
+export async function apiLogReps(
+  program: RepProgramKey,
+  reps: number[]
+): Promise<RepProgramState> {
+  const res = await fetch(`/api/${program}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reps }),
   });
   if (!res.ok) await asError(res);
-  return (await res.json()).state as PushupState;
+  return (await res.json()).state as RepProgramState;
 }
 
-export async function apiUpdatePushups(
+export async function apiUpdateReps(
+  program: RepProgramKey,
   id: number,
   reps: number[]
-): Promise<PushupState> {
-  const res = await fetch(`/api/pushups/${id}`, {
+): Promise<RepProgramState> {
+  const res = await fetch(`/api/${program}/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reps }),
   });
   if (!res.ok) await asError(res);
-  return (await res.json()).state as PushupState;
+  return (await res.json()).state as RepProgramState;
 }
 
-export async function apiDeletePushups(id: number): Promise<PushupState> {
-  const res = await fetch(`/api/pushups/${id}`, { method: 'DELETE' });
+export async function apiDeleteRepSession(
+  program: RepProgramKey,
+  id: number
+): Promise<RepProgramState> {
+  const res = await fetch(`/api/${program}/${id}`, { method: 'DELETE' });
   if (!res.ok) await asError(res);
-  return (await res.json()).state as PushupState;
+  return (await res.json()).state as RepProgramState;
+}
+
+/** Attach or replace the optional video on a session. Returns fresh state. */
+export async function apiUploadRepVideo(
+  program: RepProgramKey,
+  id: number,
+  file: File
+): Promise<RepProgramState> {
+  const fd = new FormData();
+  fd.append('video', file);
+  const res = await fetch(`/api/${program}/${id}/video`, {
+    method: 'PUT',
+    body: fd,
+  });
+  if (!res.ok) await asError(res);
+  return (await res.json()).state as RepProgramState;
+}
+
+export async function apiDeleteRepVideo(
+  program: RepProgramKey,
+  id: number
+): Promise<RepProgramState> {
+  const res = await fetch(`/api/${program}/${id}/video`, { method: 'DELETE' });
+  if (!res.ok) await asError(res);
+  return (await res.json()).state as RepProgramState;
 }
 
 // ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────

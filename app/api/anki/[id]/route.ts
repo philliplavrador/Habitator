@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteAnkiDay, getAnkiState, updateAnkiDay } from '@/lib/anki';
+import { getCurrentUserId } from '@/lib/auth';
 import { parseNewCardsField } from '@/lib/validate';
 import { getTimezone } from '@/lib/tz';
 
@@ -16,6 +17,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const userId = await getCurrentUserId();
+  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const id = parseId(params.id);
   if (id === null) {
     return NextResponse.json({ error: 'Bad day id.' }, { status: 400 });
@@ -33,11 +36,14 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const day = updateAnkiDay(id, parsed.value);
+  const day = await updateAnkiDay(userId, id, parsed.value);
   if (!day) {
     return NextResponse.json({ error: 'Day not found.' }, { status: 404 });
   }
-  return NextResponse.json({ day, state: getAnkiState(getTimezone()) });
+  return NextResponse.json({
+    day,
+    state: await getAnkiState(userId, getTimezone()),
+  });
 }
 
 // DELETE /api/anki/[id] → remove a logged day.
@@ -45,14 +51,19 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const userId = await getCurrentUserId();
+  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const id = parseId(params.id);
   if (id === null) {
     return NextResponse.json({ error: 'Bad day id.' }, { status: 400 });
   }
 
-  const removed = deleteAnkiDay(id);
+  const removed = await deleteAnkiDay(userId, id);
   if (!removed) {
     return NextResponse.json({ error: 'Day not found.' }, { status: 404 });
   }
-  return NextResponse.json({ ok: true, state: getAnkiState(getTimezone()) });
+  return NextResponse.json({
+    ok: true,
+    state: await getAnkiState(userId, getTimezone()),
+  });
 }

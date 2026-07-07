@@ -1,5 +1,11 @@
 # Habitator — Claude working rules
 
+## Be concise
+
+Default to the most concise output that answers the question. Lead with the
+answer; skip preamble, option surveys, and restating the task. Only expand when
+the user explicitly asks for more detail.
+
 ## Auto-deploy verified changes
 
 Habitator's live server runs on **Railway, which auto-deploys on every push to
@@ -31,9 +37,18 @@ work.
 ### Guardrails (never skip)
 
 - Never commit secrets or the database: `.env*` and `data/` stay gitignored.
+- The store is **PostgreSQL** (`lib/db.ts`, via `pg`), and it's **multi-user**:
+  every domain table has a `user_id` and every query is scoped to the logged-in
+  user (resolve it with `getCurrentUserId`/`requireUserId`). When you add a table
+  or query, carry `user_id` through — never return or mutate another user's rows.
 - Schema changes must stay idempotent (`CREATE TABLE/INDEX IF NOT EXISTS`); prod
-  re-runs the schema on every boot against the existing volume DB, so a change
-  must be safe to re-apply and must not lose existing data.
+  re-runs the schema on every boot against the existing database, so a change must
+  be safe to re-apply and must not lose existing data. `CREATE TABLE IF NOT EXISTS`
+  won't alter an existing table — add a new column with a guarded `ALTER TABLE …
+  ADD COLUMN IF NOT EXISTS`.
+- The one-time SQLite→Postgres import (`lib/migrate.ts`) is guarded by the
+  `app_meta.sqlite_migrated` flag and runs in a single transaction. Keep the flag
+  check and keep the import atomic.
 
 ### Pushing
 

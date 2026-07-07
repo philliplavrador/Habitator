@@ -2,20 +2,22 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import AddHabitForm from '@/components/AddHabitForm';
 import { getHabit } from '@/lib/habits';
+import { requireUserId } from '@/lib/auth';
 import { getTimezone } from '@/lib/tz';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export default function EditHabitPage({
+export default async function EditHabitPage({
   params,
 }: {
   params: { id: string };
 }) {
+  const userId = await requireUserId();
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
-  const habit = getHabit(id);
+  const habit = await getHabit(userId, id);
   if (!habit) notFound();
 
   return (

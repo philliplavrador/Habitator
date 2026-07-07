@@ -53,8 +53,11 @@ export function computeStats(entries: Entry[]): HabitStats {
 }
 
 /** Load a habit's qualifying entries and compute its stats. */
-export function getHabitStats(habitId: number): HabitStats {
-  const habit = getHabit(habitId);
+export async function getHabitStats(
+  userId: number,
+  habitId: number
+): Promise<HabitStats> {
+  const habit = await getHabit(userId, habitId);
   if (!habit) {
     return {
       passes: 0,
@@ -65,13 +68,20 @@ export function getHabitStats(habitId: number): HabitStats {
       longestStreak: 0,
     };
   }
-  const entries = listEntriesForHabitSince(habitId, habit.start_date);
+  const entries = await listEntriesForHabitSince(
+    userId,
+    habitId,
+    habit.start_date
+  );
   return computeStats(entries);
 }
 
 /** Just the current streak — used for the small Today-screen badge. */
-export function getCurrentStreak(habitId: number): number {
-  return getHabitStats(habitId).currentStreak;
+export async function getCurrentStreak(
+  userId: number,
+  habitId: number
+): Promise<number> {
+  return (await getHabitStats(userId, habitId)).currentStreak;
 }
 
 /** Format a completion rate (0..1 or null) as a display string. */

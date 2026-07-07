@@ -15,6 +15,7 @@ const TABS: { href: string; label: string; icon: ReactNode }[] = [
   { href: '/insights', label: 'Insights', icon: <InsightsIcon /> },
   { href: '/fasts', label: 'Fasting', icon: <FastingIcon /> },
   { href: '/pushups', label: 'Pushups', icon: <PushupsIcon /> },
+  { href: '/pullups', label: 'Pullups', icon: <PullupsIcon /> },
   { href: '/japanese', label: 'Japanese', icon: <JapaneseIcon /> },
 ];
 
@@ -105,6 +106,18 @@ function PushupsIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M6.5 8v8M17.5 8v8M6.5 12h11M3.5 10v4M20.5 10v4" />
+    </svg>
+  );
+}
+
+// A pull-up bar with hands gripping and a body hanging below.
+function PullupsIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 4h16" />
+      <path d="M8 4v3M16 4v3" />
+      <circle cx="12" cy="10" r="2" />
+      <path d="M12 12v5M12 14l-3 2M12 14l3 2" />
     </svg>
   );
 }

@@ -6,6 +6,7 @@ import {
   updateHabit,
 } from '@/lib/habits';
 import { getHabitStats } from '@/lib/stats';
+import { getCurrentUserId } from '@/lib/auth';
 import { parseHabitInput } from '@/lib/validate';
 import { getTimezone } from '@/lib/tz';
 
@@ -22,13 +23,15 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const userId = await getCurrentUserId();
+  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const id = parseId(params.id);
   if (id === null) return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
 
-  const habit = getHabit(id);
+  const habit = await getHabit(userId, id);
   if (!habit) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
 
-  return NextResponse.json({ habit, stats: getHabitStats(id) });
+  return NextResponse.json({ habit, stats: await getHabitStats(userId, id) });
 }
 
 // PATCH /api/habits/[id]
@@ -38,6 +41,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const userId = await getCurrentUserId();
+  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const id = parseId(params.id);
   if (id === null) return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
 
@@ -55,7 +60,7 @@ export async function PATCH(
     'archived' in (body as Record<string, unknown>)
   ) {
     const archived = Boolean((body as Record<string, unknown>).archived);
-    const habit = setHabitArchived(id, archived);
+    const habit = await setHabitArchived(userId, id, archived);
     if (!habit) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
     return NextResponse.json({ habit });
   }
@@ -65,7 +70,7 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const habit = updateHabit(id, parsed.value);
+  const habit = await updateHabit(userId, id, parsed.value);
   if (!habit) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
   return NextResponse.json({ habit });
 }
@@ -75,10 +80,12 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const userId = await getCurrentUserId();
+  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const id = parseId(params.id);
   if (id === null) return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
 
-  const removed = deleteHabit(id);
+  const removed = await deleteHabit(userId, id);
   if (!removed) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

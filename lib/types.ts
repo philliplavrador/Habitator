@@ -88,18 +88,75 @@ export interface UpdateFastInput {
   note?: string;
 }
 
-// ── Pushup program ──────────────────────────────────────────────────
+// ── Rep programs (pushups, pullups) ─────────────────────────────────
+//
+// Both are the same shape: 3 sets, a JSON target/reps pair per attempt, and
+// progression driven purely by the count of completed sessions. The generic
+// engine (lib/repProgram.ts) is configured once per program.
+
+/** Which rep program a row/route/URL belongs to. */
+export type RepProgramKey = 'pushups' | 'pullups';
+
+/** Static definition of one rep program. */
+export interface RepProgramConfig {
+  key: RepProgramKey;
+  table: string; // sqlite table name
+  label: string; // "Pushups" | "Pullups"
+  sets: number; // sets per day (3)
+  day1Total: number; // total reps on day 1 (pushups 54, pullups 15)
+  programDays: number; // length of the ramp
+  restSeconds: number; // rest between sets
+  /** Human blurb for the finished state, e.g. "3 × 50". */
+  finishLabel: string;
+}
 
 /** One logged attempt at a program day (may or may not have completed it). */
-export interface PushupSession {
+export interface RepSession {
   id: number;
   date: string; // YYYY-MM-DD
-  day_index: number; // program day 1..97 this attempt targeted
+  day_index: number; // program day this attempt targeted
   target: number[]; // [t1, t2, t3] prescribed reps
   reps: number[]; // [r1, r2, r3] actual reps done
   completed: boolean; // met target on every set
+  /** Optional stored video filename; null when no video is attached. */
+  video: string | null;
   created_at: string;
 }
+
+/** The computed state of a rep program — drives its card + Today summary. */
+export interface RepProgramState {
+  key: RepProgramKey;
+  label: string;
+  programDays: number;
+  restSeconds: number;
+  sets: number;
+  finishLabel: string;
+  completedCount: number; // sessions completed
+  currentDay: number; // completedCount + 1, capped at programDays
+  target: number[]; // prescription for currentDay
+  daysLeft: number; // programDays - completedCount
+  programComplete: boolean; // completedCount >= programDays
+  /** A completed session dated today, if any — so the card can rest. */
+  doneToday: RepSession | null;
+  /** The most recent attempt overall — for "fell short" messaging. */
+  lastAttempt: RepSession | null;
+  /**
+   * Attempt streak: consecutive local days on which at least one session was
+   * logged (pass OR fail). Only a fully skipped day breaks it; a today with no
+   * attempt yet does not (the run may still be anchored at yesterday).
+   */
+  currentStreak: number;
+  longestStreak: number;
+}
+
+/** A day's outcome in the session heatmap. */
+export type RepDayStatus = 'complete' | 'attempted';
+
+// Back-compat aliases — the pushup feature shipped under these names.
+export type PushupSession = RepSession;
+export type PushupState = RepProgramState;
+export type PullupSession = RepSession;
+export type PullupState = RepProgramState;
 
 // ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────
 
@@ -164,19 +221,4 @@ export interface AnkiState {
   longestStreak: number;
 
   daysLogged: number; // count of logged days
-}
-
-/** The computed state of the program — drives the Today-screen card. */
-export interface PushupState {
-  programDays: number; // 97
-  restSeconds: number; // 90
-  completedCount: number; // sessions completed
-  currentDay: number; // completedCount + 1, capped at programDays
-  target: number[]; // prescription for currentDay
-  daysLeft: number; // programDays - completedCount
-  programComplete: boolean; // completedCount >= programDays
-  /** A completed session dated today, if any — so the card can rest. */
-  doneToday: PushupSession | null;
-  /** The most recent attempt overall — for "fell short" messaging. */
-  lastAttempt: PushupSession | null;
 }

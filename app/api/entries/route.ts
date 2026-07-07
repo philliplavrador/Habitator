@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { clearEntry, setEntry } from '@/lib/entries';
 import { getHabit } from '@/lib/habits';
+import { getCurrentUserId } from '@/lib/auth';
 import { compareISO, isValidISODate, todayISO } from '@/lib/dates';
 import { getTimezone } from '@/lib/tz';
 import type { EntryStatus } from '@/lib/types';
@@ -15,6 +16,9 @@ function parseHabitId(v: unknown): number | null {
 
 // POST /api/entries  body { habitId, date, status }  → set pass/fail
 export async function POST(req: NextRequest) {
+  const userId = await getCurrentUserId();
+  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   let body: unknown;
   try {
     body = await req.json();
@@ -37,7 +41,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'status must be pass or fail.' }, { status: 400 });
   }
 
-  const habit = getHabit(habitId);
+  // Confirm the habit belongs to this user before writing an entry for it —
+  // the (habit_id, date) uniqueness is global, so an unchecked habitId could
+  // clobber another account's data.
+  const habit = await getHabit(userId, habitId);
   if (!habit) {
     return NextResponse.json({ error: 'Habit not found.' }, { status: 404 });
   }
@@ -58,12 +65,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const entry = setEntry(habitId, date, status);
+  const entry = await setEntry(userId, habitId, date, status);
   return NextResponse.json({ entry });
 }
 
 // DELETE /api/entries?habitId=..&date=..  → clear back to blank
 export async function DELETE(req: NextRequest) {
+  const userId = await getCurrentUserId();
+  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const sp = req.nextUrl.searchParams;
   const habitId = parseHabitId(sp.get('habitId'));
   const date = sp.get('date') ?? '';
@@ -75,6 +85,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Bad date.' }, { status: 400 });
   }
 
-  const removed = clearEntry(habitId, date);
+  const removed = await clearEntry(userId, habitId, date);
   return NextResponse.json({ ok: true, removed });
 }

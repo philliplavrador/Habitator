@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ActiveFastError, deleteFast, getFast, updateFast } from '@/lib/fasts';
+import { getCurrentUserId } from '@/lib/auth';
 import { parseUpdateFastInput } from '@/lib/validate';
 
 export const runtime = 'nodejs';
@@ -17,6 +18,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const userId = await getCurrentUserId();
+  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const id = parseId(params.id);
   if (id === null) return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
 
@@ -32,7 +35,7 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const existing = getFast(id);
+  const existing = await getFast(userId, id);
   if (!existing) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
 
   // Cross-field check against the merged row: a completed fast must not end
@@ -51,7 +54,7 @@ export async function PATCH(
   }
 
   try {
-    const fast = updateFast(id, parsed.value);
+    const fast = await updateFast(userId, id, parsed.value);
     if (!fast) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
     return NextResponse.json({ fast });
   } catch (err) {
@@ -67,10 +70,12 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const userId = await getCurrentUserId();
+  if (userId === null) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const id = parseId(params.id);
   if (id === null) return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
 
-  const removed = deleteFast(id);
+  const removed = await deleteFast(userId, id);
   if (!removed) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

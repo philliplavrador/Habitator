@@ -11,7 +11,15 @@ import {
   toLocalInputValue,
   weekdayOf,
 } from './dates';
-import type { AnkiDay, Entry, Fast, Habit, PushupSession } from './types';
+import type {
+  AnkiDay,
+  Entry,
+  Fast,
+  Habit,
+  PushupSession,
+  RepDayStatus,
+  RepSession,
+} from './types';
 
 // ── Habits ──────────────────────────────────────────────────────────
 
@@ -236,9 +244,67 @@ export function consecutiveFastingStreak(
   return { current, longest };
 }
 
-// ── Pushups ─────────────────────────────────────────────────────────
+// ── Rep programs (pushups / pullups) ────────────────────────────────
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+
+/**
+ * Attempt streak for a rep program: consecutive local days that have at least
+ * one logged session (pass OR fail). `dates` is the DISTINCT set of session
+ * dates (order-independent). Only a fully skipped day breaks the run; a `today`
+ * with no attempt yet does not — the current run is anchored at today if it has
+ * an attempt, else at yesterday (so an in-progress day never reads as broken).
+ */
+export function attemptStreak(dates: string[], today: string): StreakStat {
+  const set = new Set(dates);
+
+  // Longest run of consecutive attempted days, ever.
+  const sorted = [...set].sort();
+  let longest = 0;
+  let run = 0;
+  let prev: string | null = null;
+  for (const d of sorted) {
+    if (prev && addDays(prev, 1) === d) run++;
+    else run = 1;
+    if (run > longest) longest = run;
+    prev = d;
+  }
+
+  // Current run ending today (or yesterday if today isn't attempted yet).
+  let current = 0;
+  let cursor = set.has(today) ? today : addDays(today, -1);
+  while (set.has(cursor)) {
+    current++;
+    cursor = addDays(cursor, -1);
+  }
+
+  return { current, longest };
+}
+
+/**
+ * Per-day outcome for the session heatmap: 'complete' when any session that day
+ * met every set, else 'attempted' (tried but fell short). Days with no session
+ * are simply absent — the heatmap renders those as "skipped". `startDate` is the
+ * earliest session date (null when there are no sessions). `sessions` may be in
+ * any order.
+ */
+export function sessionHeatmap(sessions: RepSession[]): {
+  statusByDate: Record<string, RepDayStatus>;
+  startDate: string | null;
+} {
+  const statusByDate: Record<string, RepDayStatus> = {};
+  let startDate: string | null = null;
+  for (const s of sessions) {
+    if (startDate === null || compareISO(s.date, startDate) < 0) {
+      startDate = s.date;
+    }
+    if (s.completed) statusByDate[s.date] = 'complete';
+    else if (statusByDate[s.date] !== 'complete') {
+      statusByDate[s.date] = 'attempted';
+    }
+  }
+  return { statusByDate, startDate };
+}
 
 export interface RepVolumePoint {
   n: number; // session ordinal (1-based, chronological)

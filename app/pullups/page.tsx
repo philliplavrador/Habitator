@@ -5,7 +5,7 @@ import StatTile from '@/components/ui/StatTile';
 import ChartCard from '@/components/charts/ChartCard';
 import LineTrend from '@/components/charts/LineTrend';
 import { chart } from '@/components/charts/theme';
-import { getPushupState, listPushupSessions } from '@/lib/pushups';
+import { getPullupState, listPullupSessions } from '@/lib/pullups';
 import { requireUserId } from '@/lib/auth';
 import {
   repVolumeSeries,
@@ -19,13 +19,13 @@ import { getTimezone } from '@/lib/tz';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export default async function PushupsPage() {
+export default async function PullupsPage() {
   const userId = await requireUserId();
   const tz = getTimezone();
   const today = todayISO(tz);
-  const state = await getPushupState(userId, tz);
+  const state = await getPullupState(userId, tz);
 
-  const sessions = await listPushupSessions(userId);
+  const sessions = await listPullupSessions(userId);
   const volume = repVolumeSeries(sessions);
   const timeline = completionTimeline(sessions);
   const projection = projectedFinish(
@@ -40,10 +40,10 @@ export default async function PushupsPage() {
     <main className="pb-28 pt-4">
       <header className="mb-5">
         <h1 className="text-center font-display text-xl font-bold tracking-tight text-text-primary">
-          Pushups
+          Pullups
         </h1>
         <p className="mt-1 text-center text-xs text-text-muted">
-          A {state.programDays}-day progression to {state.finishLabel}.
+          A {state.programDays}-day progression from 3 × 5 to {state.finishLabel}.
         </p>
       </header>
 

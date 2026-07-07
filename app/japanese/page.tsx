@@ -7,6 +7,7 @@ import ChartCard from '@/components/charts/ChartCard';
 import LineTrend from '@/components/charts/LineTrend';
 import { chart } from '@/components/charts/theme';
 import { getAnkiState, listAnkiDays } from '@/lib/anki';
+import { requireUserId } from '@/lib/auth';
 import { ankiCumulativeSeries } from '@/lib/analytics';
 import { formatHumanYear } from '@/lib/dates';
 import { getTimezone } from '@/lib/tz';
@@ -15,10 +16,11 @@ import type { AnkiState } from '@/lib/types';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export default function JapanesePage() {
+export default async function JapanesePage() {
+  const userId = await requireUserId();
   const tz = getTimezone();
-  const state = getAnkiState(tz);
-  const days = listAnkiDays();
+  const state = await getAnkiState(userId, tz);
+  const days = await listAnkiDays(userId);
   const series = ankiCumulativeSeries(
     days,
     state.startDate,

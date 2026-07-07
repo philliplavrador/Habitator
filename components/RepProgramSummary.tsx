@@ -1,23 +1,25 @@
 import Link from 'next/link';
 import ProgressBar from './ProgressBar';
-import type { PushupState } from '@/lib/types';
+import type { RepProgramState } from '@/lib/types';
 
 /**
- * Compact, non-interactive pushup card for the Today screen. Shows program
- * progress at a glance and links to the full /pushups screen for logging,
- * history, and charts.
+ * Compact, non-interactive rep-program card for the Today screen. Shows program
+ * progress and the attempt streak at a glance and links to the full screen for
+ * logging, history, heatmap, and charts. Shared by pushups and pullups.
  */
-export default function PushupSummary({ state }: { state: PushupState }) {
+export default function RepProgramSummary({ state }: { state: RepProgramState }) {
   const pct = state.completedCount / state.programDays;
   const done = state.doneToday !== null;
 
   return (
     <Link
-      href="/pushups"
+      href={`/${state.key}`}
       className="mb-4 block rounded-card border border-border bg-surface p-4 shadow-card transition-colors active:bg-surface2"
     >
       <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="font-display text-base font-bold text-text-primary">Pushups</h2>
+        <h2 className="font-display text-base font-bold text-text-primary">
+          {state.label}
+        </h2>
         <span className="text-xs font-semibold text-accent-400">
           {state.programComplete
             ? 'Complete 🎉'
@@ -29,7 +31,9 @@ export default function PushupSummary({ state }: { state: PushupState }) {
 
       <div className="mt-2 flex items-center justify-between text-xs">
         {state.programComplete ? (
-          <span className="text-text-secondary">All {state.programDays} days done 💪</span>
+          <span className="text-text-secondary">
+            All {state.programDays} days done 💪
+          </span>
         ) : done ? (
           <span className="font-semibold text-pass">✓ Done today</span>
         ) : (
@@ -40,7 +44,12 @@ export default function PushupSummary({ state }: { state: PushupState }) {
             </span>
           </span>
         )}
-        <span className="font-semibold text-accent-400">Open →</span>
+        <span className="flex items-center gap-2">
+          {state.currentStreak > 0 && (
+            <span className="text-text-muted">🔥 {state.currentStreak}</span>
+          )}
+          <span className="font-semibold text-accent-400">Open →</span>
+        </span>
       </div>
     </Link>
   );

@@ -1,24 +1,34 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Button from './ui/Button';
 import { Field } from './ui/Field';
 import { useConfirm } from './ui/confirm';
 import { useToast } from './ui/toast';
-import { apiDeletePushups, apiUpdatePushups } from '@/lib/client';
+import {
+  apiDeleteRepSession,
+  apiDeleteRepVideo,
+  apiUpdateReps,
+  apiUploadRepVideo,
+} from '@/lib/client';
 import { formatHuman } from '@/lib/dates';
-import type { PushupSession } from '@/lib/types';
+import type { RepProgramKey, RepSession } from '@/lib/types';
 
-/** Editable log of every pushup session, newest first. */
-export default function PushupHistory({ sessions }: { sessions: PushupSession[] }) {
+interface Props {
+  program: RepProgramKey;
+  sessions: RepSession[];
+}
+
+/** Editable log of every session for a rep program, newest first. */
+export default function RepProgramHistory({ program, sessions }: Props) {
   if (sessions.length === 0) return null;
   return (
     <section className="mt-6">
       <h2 className="mb-3 text-base font-bold text-text-primary">Session history</h2>
       <ul className="flex flex-col gap-2">
         {sessions.map((s) => (
-          <PushupRow key={s.id} session={s} />
+          <SessionRow key={s.id} program={program} session={s} />
         ))}
       </ul>
       <p className="mt-2 text-xs text-text-muted">
@@ -29,13 +39,25 @@ export default function PushupHistory({ sessions }: { sessions: PushupSession[] 
   );
 }
 
-function PushupRow({ session }: { session: PushupSession }) {
+function SessionRow({
+  program,
+  session,
+}: {
+  program: RepProgramKey;
+  session: RepSession;
+}) {
   const router = useRouter();
   const confirm = useConfirm();
   const { show } = useToast();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reps, setReps] = useState<string[]>(session.reps.map(String));
+  const [showVideo, setShowVideo] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const videoUrl = session.video
+    ? `/api/${program}/${session.id}/video?v=${encodeURIComponent(session.video)}`
+    : null;
 
   async function save() {
     const parsed = reps.map((r) => {
@@ -44,7 +66,7 @@ function PushupRow({ session }: { session: PushupSession }) {
     });
     setBusy(true);
     try {
-      await apiUpdatePushups(session.id, parsed);
+      await apiUpdateReps(program, session.id, parsed);
       setEditing(false);
       router.refresh();
     } catch (e) {
@@ -61,14 +83,14 @@ function PushupRow({ session }: { session: PushupSession }) {
   async function del() {
     const ok = await confirm({
       title: 'Delete this session?',
-      message: 'This may roll your current program day back.',
+      message: 'This may roll your current program day back, and removes its video.',
       confirmLabel: 'Delete',
       danger: true,
     });
     if (!ok) return;
     setBusy(true);
     try {
-      await apiDeletePushups(session.id);
+      await apiDeleteRepSession(program, session.id);
       router.refresh();
     } catch (e) {
       show({
@@ -80,6 +102,48 @@ function PushupRow({ session }: { session: PushupSession }) {
     }
   }
 
+  async function uploadVideo(file: File) {
+    setBusy(true);
+    try {
+      await apiUploadRepVideo(program, session.id, file);
+      setShowVideo(true);
+      router.refresh();
+    } catch (e) {
+      show({
+        tone: 'error',
+        title: 'Could not upload video',
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  async function removeVideo() {
+    const ok = await confirm({
+      title: 'Remove this video?',
+      message: 'The session stays; only the video is deleted.',
+      confirmLabel: 'Remove',
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await apiDeleteRepVideo(program, session.id);
+      setShowVideo(false);
+      router.refresh();
+    } catch (e) {
+      show({
+        tone: 'error',
+        title: 'Could not remove video',
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (editing) {
     return (
       <li className="rounded-card border border-border bg-surface p-3 shadow-card">
@@ -87,7 +151,7 @@ function PushupRow({ session }: { session: PushupSession }) {
           Day {session.day_index} · target {session.target.join(' · ')}
         </div>
         <div className="grid grid-cols-3 gap-2">
-          {[0, 1, 2].map((i) => (
+          {session.reps.map((_, i) => (
             <Field
               key={i}
               label={`Set ${i + 1}`}
@@ -137,10 +201,11 @@ function PushupRow({ session }: { session: PushupSession }) {
                 ✓ done
               </span>
             ) : (
-              <span className="rounded-btn bg-surface2 px-1.5 py-0.5 text-xs text-text-muted">
-                incomplete
+              <span className="rounded-btn bg-warn/15 px-1.5 py-0.5 text-xs font-semibold text-warn">
+                attempted
               </span>
             )}
+            {videoUrl && <span className="text-xs text-text-muted">🎬</span>}
           </div>
           <p className="mt-0.5 text-sm tabular-nums text-text-secondary">
             {session.reps.join(' · ')}{' '}
@@ -157,6 +222,66 @@ function PushupRow({ session }: { session: PushupSession }) {
           </Button>
         </div>
       </div>
+
+      {/* Optional video: play inline, replace, or remove; add if none yet. */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) uploadVideo(f);
+        }}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-border/60 pt-2 text-xs">
+        {videoUrl ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setShowVideo((v) => !v)}
+              className="text-accent-400 active:text-accent"
+            >
+              {showVideo ? 'Hide video' : '▶ Play video'}
+            </button>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={busy}
+              className="text-text-muted underline active:text-text-primary disabled:opacity-50"
+            >
+              Replace
+            </button>
+            <button
+              type="button"
+              onClick={removeVideo}
+              disabled={busy}
+              className="text-text-muted underline active:text-fail disabled:opacity-50"
+            >
+              Remove video
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            className="text-text-muted underline active:text-text-primary disabled:opacity-50"
+          >
+            {busy ? 'Uploading…' : '🎬 Add video'}
+          </button>
+        )}
+      </div>
+
+      {videoUrl && showVideo && (
+        <video
+          src={videoUrl}
+          controls
+          playsInline
+          preload="metadata"
+          className="mt-2 w-full rounded-btn border border-border bg-black"
+        />
+      )}
     </li>
   );
 }

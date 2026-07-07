@@ -11,6 +11,7 @@ import { chart } from '@/components/charts/theme';
 import { getHabit } from '@/lib/habits';
 import { listEntriesForHabit, listEntriesForHabitSince } from '@/lib/entries';
 import { getHabitStats, formatRate } from '@/lib/stats';
+import { requireUserId } from '@/lib/auth';
 import { rollingCompletionSeries, dayOfWeekBreakdown } from '@/lib/analytics';
 import { formatHuman, todayISO } from '@/lib/dates';
 import { getTimezone } from '@/lib/tz';
@@ -26,25 +27,28 @@ function weekdayColor(rate: number | null): string {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export default function HabitDetailPage({
+export default async function HabitDetailPage({
   params,
 }: {
   params: { id: string };
 }) {
+  const userId = await requireUserId();
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
-  const habit = getHabit(id);
+  const habit = await getHabit(userId, id);
   if (!habit) notFound();
 
-  const stats = getHabitStats(id);
+  const stats = await getHabitStats(userId, id);
   const today = todayISO(getTimezone());
 
   const statusByDate: Record<string, EntryStatus> = {};
-  for (const e of listEntriesForHabit(id)) statusByDate[e.date] = e.status;
+  for (const e of await listEntriesForHabit(userId, id)) {
+    statusByDate[e.date] = e.status;
+  }
 
   // Analytics over recorded days on/after the start date.
-  const since = listEntriesForHabitSince(id, habit.start_date);
+  const since = await listEntriesForHabitSince(userId, id, habit.start_date);
   const trend = rollingCompletionSeries(since, 14).map((p) => ({
     label: p.date.slice(5),
     rate: p.rate,

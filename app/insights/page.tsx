@@ -9,8 +9,10 @@ import { listActiveHabits, listAllHabits } from '@/lib/habits';
 import { getHabitStats, formatRate } from '@/lib/stats';
 import { listAllEntries } from '@/lib/entries';
 import { listFasts } from '@/lib/fasts';
+import { requireUserId } from '@/lib/auth';
 import { computeFastStats } from '@/lib/fastStats';
 import { getPushupState } from '@/lib/pushups';
+import { getPullupState } from '@/lib/pullups';
 import { cumulativePasses, dayOfWeekBreakdown, perfectDays } from '@/lib/analytics';
 import { formatDuration, todayISO } from '@/lib/dates';
 import { getTimezone } from '@/lib/tz';
@@ -25,19 +27,25 @@ function weekdayColor(rate: number | null): string {
   return chart.fail;
 }
 
-export default function InsightsPage() {
+export default async function InsightsPage() {
+  const userId = await requireUserId();
   const tz = getTimezone();
   const today = todayISO(tz);
 
-  const habits = listActiveHabits();
-  const rows = habits
-    .map((habit) => ({ habit, stats: getHabitStats(habit.id) }))
-    .sort((a, b) => {
-      const ra = a.stats.completionRate ?? -1;
-      const rb = b.stats.completionRate ?? -1;
-      if (rb !== ra) return rb - ra;
-      return b.stats.currentStreak - a.stats.currentStreak;
-    });
+  const habits = await listActiveHabits(userId);
+  const rows = (
+    await Promise.all(
+      habits.map(async (habit) => ({
+        habit,
+        stats: await getHabitStats(userId, habit.id),
+      }))
+    )
+  ).sort((a, b) => {
+    const ra = a.stats.completionRate ?? -1;
+    const rb = b.stats.completionRate ?? -1;
+    if (rb !== ra) return rb - ra;
+    return b.stats.currentStreak - a.stats.currentStreak;
+  });
 
   const passes = rows.reduce((s, r) => s + r.stats.passes, 0);
   const fails = rows.reduce((s, r) => s + r.stats.fails, 0);
@@ -45,8 +53,8 @@ export default function InsightsPage() {
   const bestStreak = rows.reduce((m, r) => Math.max(m, r.stats.currentStreak), 0);
 
   // Cross-habit analytics.
-  const allEntries = listAllEntries();
-  const perfect = perfectDays(listAllHabits(), allEntries, today);
+  const allEntries = await listAllEntries(userId);
+  const perfect = perfectDays(await listAllHabits(userId), allEntries, today);
   const cumulative = cumulativePasses(allEntries).map((p) => ({
     label: p.date.slice(5),
     total: p.total,
@@ -67,8 +75,9 @@ export default function InsightsPage() {
     return { label: date.slice(5), rate: p + f ? Math.round((p / (p + f)) * 100) : null };
   });
 
-  const fastStats = computeFastStats(listFasts());
-  const pushups = getPushupState(tz);
+  const fastStats = computeFastStats(await listFasts(userId));
+  const pushups = await getPushupState(userId, tz);
+  const pullups = await getPullupState(userId, tz);
 
   return (
     <main className="pb-28 pt-4">
@@ -165,6 +174,14 @@ export default function InsightsPage() {
             label="Pushup day"
             value={pushups.programComplete ? '✓' : String(pushups.currentDay)}
             sub={`of ${pushups.programDays}`}
+            accent="accent"
+          />
+        </Link>
+        <Link href="/pullups" className="block">
+          <StatTile
+            label="Pullup day"
+            value={pullups.programComplete ? '✓' : String(pullups.currentDay)}
+            sub={`of ${pullups.programDays}`}
             accent="accent"
           />
         </Link>

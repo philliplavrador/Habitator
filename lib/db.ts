@@ -1,28 +1,41 @@
-import Database from 'better-sqlite3';
-import fs from 'node:fs';
-import path from 'node:path';
+// PostgreSQL data layer (node-postgres).
+//
+// Replaces the old single-file better-sqlite3 setup. The app is now multi-user:
+// every domain table carries a `user_id` and all queries are scoped to the
+// logged-in user (see the lib/* query helpers).
+//
+// Design notes:
+// - The connection Pool is created LAZILY (on first query), never at import.
+//   `next build`'s "Collecting page data" phase imports every route module; a
+//   Pool created there would try to reach a DB that may not exist at build time.
+//   Deferring the open until a handler runs a query keeps the build DB-free.
+// - On first use we (idempotently) create the schema and run the one-time
+//   SQLite→Postgres migration, serialized across instances with a Postgres
+//   advisory lock and memoized so it happens exactly once per process.
+// - A globalThis singleton keeps Next.js dev hot-reload from opening many pools.
 
-/**
- * better-sqlite3 singleton — opened LAZILY (on first query, never at import).
- *
- * - The DB file lives at DATABASE_PATH (a Railway volume in prod, e.g.
- *   /data/habitator.db). Local dev falls back to ./data/habitator.db.
- * - Schema is created idempotently on open (CREATE TABLE IF NOT EXISTS), so
- *   there is no migration framework to run.
- * - The connection is created on the first real query, NOT when this module is
- *   imported. This matters for `next build`: its "Collecting page data" phase
- *   imports every route module across parallel workers, and if the DB were
- *   opened (and `PRAGMA journal_mode = WAL` run) at import, those workers would
- *   race on the same file and fail the build with SQLITE_BUSY. Deferring the
- *   open until a handler actually runs a query keeps the build from ever
- *   touching the database.
- * - A globalThis singleton prevents Next.js dev hot-reload from opening many
- *   connections to the same file.
- */
+import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
+// ── Schema ──────────────────────────────────────────────────────────
+//
+// Faithful to the old SQLite shape (TEXT dates/timestamps, INTEGER 0/1 flags,
+// JSON-as-TEXT for rep target/reps) so migrated rows copy across verbatim — the
+// only structural change is the `users` table plus a `user_id` FK on every table
+// and per-user uniqueness. All statements are IF NOT EXISTS so re-running the
+// schema on every boot against an existing database is a safe no-op.
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  id            SERIAL PRIMARY KEY,
+  username      TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at    TEXT NOT NULL
+);
+-- Case-insensitive unique usernames.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_users_username ON users (lower(username));
+
 CREATE TABLE IF NOT EXISTS habits (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name        TEXT    NOT NULL,
   details     TEXT    NOT NULL DEFAULT '',
   exceptions  TEXT    NOT NULL DEFAULT '',
@@ -31,130 +44,222 @@ CREATE TABLE IF NOT EXISTS habits (
   archived    INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT    NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_habits_user ON habits (user_id);
 
 CREATE TABLE IF NOT EXISTS entries (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   habit_id   INTEGER NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
   date       TEXT    NOT NULL,
   status     TEXT    NOT NULL CHECK (status IN ('pass','fail')),
   created_at TEXT    NOT NULL,
   UNIQUE (habit_id, date)
 );
-
 CREATE INDEX IF NOT EXISTS idx_entries_habit_date ON entries (habit_id, date);
-CREATE INDEX IF NOT EXISTS idx_entries_date ON entries (date);
+CREATE INDEX IF NOT EXISTS idx_entries_user_date ON entries (user_id, date);
 
 CREATE TABLE IF NOT EXISTS fasts (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  start_at   TEXT    NOT NULL,            -- ISO timestamp
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  start_at   TEXT             NOT NULL,   -- ISO timestamp
   end_at     TEXT,                        -- ISO timestamp; NULL = in progress
-  goal_hours REAL    NOT NULL,            -- target duration in hours
-  note       TEXT    NOT NULL DEFAULT '',
-  created_at TEXT    NOT NULL
+  goal_hours DOUBLE PRECISION NOT NULL,   -- target duration in hours
+  note       TEXT             NOT NULL DEFAULT '',
+  created_at TEXT             NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_fasts_start ON fasts (start_at);
--- Partial unique index: at most one in-progress fast (end_at IS NULL) at a time.
--- The indexed key is the constant expression (end_at IS NULL) — which is 1 for
--- every active row — so a second active row collides. Indexing end_at itself
--- would NOT work: SQLite treats each NULL as distinct, so the constraint would
--- never fire.
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_fast_active ON fasts ((end_at IS NULL)) WHERE end_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_fasts_user_start ON fasts (user_id, start_at);
+-- At most one in-progress fast (end_at IS NULL) PER USER at a time.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_fast_active ON fasts (user_id) WHERE end_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS pushup_sessions (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   date       TEXT    NOT NULL,            -- YYYY-MM-DD (local day of the attempt)
-  day_index  INTEGER NOT NULL,            -- program day this attempt targeted (1..97)
+  day_index  INTEGER NOT NULL,            -- program day this attempt targeted
   target     TEXT    NOT NULL,            -- JSON [t1,t2,t3] prescribed reps
   reps       TEXT    NOT NULL,            -- JSON [r1,r2,r3] actual reps done
   completed  INTEGER NOT NULL,            -- 1 if reps met target on every set
+  video      TEXT,                        -- optional stored video filename
   created_at TEXT    NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_pushups_user ON pushup_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_pushups_completed ON pushup_sessions (user_id, completed);
 
-CREATE INDEX IF NOT EXISTS idx_pushups_completed ON pushup_sessions (completed);
+CREATE TABLE IF NOT EXISTS pullup_sessions (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date       TEXT    NOT NULL,
+  day_index  INTEGER NOT NULL,
+  target     TEXT    NOT NULL,
+  reps       TEXT    NOT NULL,
+  completed  INTEGER NOT NULL,
+  video      TEXT,
+  created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pullups_user ON pullup_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_pullups_completed ON pullup_sessions (user_id, completed);
 
 CREATE TABLE IF NOT EXISTS anki_days (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   date       TEXT    NOT NULL,            -- YYYY-MM-DD (local day studied)
-  new_cards  INTEGER NOT NULL,           -- new cards studied that day (>= 0)
+  new_cards  INTEGER NOT NULL,            -- new cards studied that day (>= 0)
   created_at TEXT    NOT NULL,
-  UNIQUE (date)                          -- one row per day; logging upserts
+  UNIQUE (user_id, date)                  -- one row per (user, day); logging upserts
 );
+CREATE INDEX IF NOT EXISTS idx_anki_user_date ON anki_days (user_id, date);
 
-CREATE INDEX IF NOT EXISTS idx_anki_days_date ON anki_days (date);
-
--- Tiny key/value store for one-time bootstraps. Used to seed the Anki tracker's
--- pre-existing study days exactly once per database: the flag makes a reboot
--- never re-insert them, and a later edit/delete is never silently undone.
+-- Global key/value store for one-time bootstraps (e.g. the SQLite→Postgres
+-- migration flag). Not user-scoped.
 CREATE TABLE IF NOT EXISTS app_meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
 `;
 
-function resolveDbPath(): string {
-  const fromEnv = process.env.DATABASE_PATH;
-  if (fromEnv && fromEnv.trim() !== '') return fromEnv;
-  return path.join(process.cwd(), 'data', 'habitator.db');
+// Arbitrary constant identifying the schema/migration advisory lock. Any two
+// booting instances contend on this so schema creation + migration run once.
+const INIT_LOCK_KEY = 0x48414249; // "HABI"
+
+// ── Directory for app-managed files (uploaded videos) ───────────────
+//
+// The BASE data directory. Uploaded videos live in `<dataDir>/uploads/` (see
+// lib/media.ts), on the Railway volume alongside where the old SQLite file was.
+// Resolution: DATA_DIR, else the old SQLite file's directory (DATABASE_PATH),
+// else ./data locally.
+import path from 'node:path';
+
+export function dataDir(): string {
+  const explicit = process.env.DATA_DIR;
+  if (explicit && explicit.trim() !== '') return explicit;
+  const legacy = process.env.DATABASE_PATH;
+  if (legacy && legacy.trim() !== '') return path.dirname(legacy);
+  return path.join(process.cwd(), 'data');
 }
 
-function createConnection(): Database.Database {
-  const dbPath = resolveDbPath();
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+// ── Pool + one-time init ────────────────────────────────────────────
 
-  const conn = new Database(dbPath);
-  conn.pragma('journal_mode = WAL');
-  conn.pragma('foreign_keys = ON');
-  conn.exec(SCHEMA);
-  return conn;
+function sslConfig(): false | { rejectUnauthorized: boolean } {
+  const mode = process.env.PGSSL;
+  if (mode === 'disable') return false;
+  if (mode === 'require') return { rejectUnauthorized: false };
+  const url = process.env.DATABASE_URL ?? '';
+  // Same-project (Railway private network) and local connections don't use TLS.
+  if (
+    url.includes('.railway.internal') ||
+    url.includes('localhost') ||
+    url.includes('127.0.0.1')
+  ) {
+    return false;
+  }
+  // External Postgres (incl. Railway's public proxy) needs TLS.
+  return { rejectUnauthorized: false };
 }
 
 const globalForDb = globalThis as unknown as {
-  __habitatorDb?: Database.Database;
+  __habitatorPool?: Pool;
+  __habitatorInit?: Promise<void>;
 };
 
-/** Open (and memoize) the real connection on first use. */
-function getDb(): Database.Database {
-  if (!globalForDb.__habitatorDb) {
-    globalForDb.__habitatorDb = createConnection();
-  }
-  return globalForDb.__habitatorDb;
-}
-
-/**
- * A prepared statement whose underlying better-sqlite3 Statement is compiled on
- * first access — so `db.prepare(sql)` at module top level never opens the DB.
- */
-function lazyStatement(sql: string): Database.Statement {
-  let real: Database.Statement | undefined;
-  const resolve = () => (real ??= getDb().prepare(sql));
-  return new Proxy({} as Database.Statement, {
-    get(_target, prop) {
-      const r = resolve();
-      const value = Reflect.get(r, prop, r) as unknown;
-      return typeof value === 'function'
-        ? (value as (...args: unknown[]) => unknown).bind(r)
-        : value;
-    },
-  });
-}
-
-/**
- * Lazy stand-in for the connection. `db.prepare(sql)` hands back a lazy
- * statement (no connection yet); any other member access resolves the real
- * connection on demand. This keeps every call site
- * (`db.prepare(...).get/all/run`) unchanged while making the module
- * import-safe for the Next.js build.
- */
-export const db: Database.Database = new Proxy({} as Database.Database, {
-  get(_target, prop) {
-    if (prop === 'prepare') {
-      return (sql: string) => lazyStatement(sql);
+function rawPool(): Pool {
+  if (!globalForDb.__habitatorPool) {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString || connectionString.trim() === '') {
+      throw new Error(
+        'DATABASE_URL is not set. Point it at your Postgres instance ' +
+          '(Railway: the Postgres plugin exposes DATABASE_URL automatically).'
+      );
     }
-    const r = getDb();
-    const value = Reflect.get(r, prop, r) as unknown;
-    return typeof value === 'function'
-      ? (value as (...args: unknown[]) => unknown).bind(r)
-      : value;
-  },
-});
+    globalForDb.__habitatorPool = new Pool({
+      connectionString,
+      ssl: sslConfig(),
+      max: 10,
+    });
+  }
+  return globalForDb.__habitatorPool;
+}
+
+async function initialize(): Promise<void> {
+  const client = await rawPool().connect();
+  try {
+    // Serialize schema creation + migration across concurrent booting instances.
+    await client.query('SELECT pg_advisory_lock($1)', [INIT_LOCK_KEY]);
+    await client.query(SCHEMA);
+    // Dynamic import breaks the db↔migrate cycle (migrate uses these helpers).
+    const { runMigrationOnce } = await import('./migrate');
+    await runMigrationOnce(client);
+  } finally {
+    await client
+      .query('SELECT pg_advisory_unlock($1)', [INIT_LOCK_KEY])
+      .catch(() => {});
+    client.release();
+  }
+}
+
+/** Ensure the pool exists and the schema + migration have run (once). */
+function ready(): Promise<void> {
+  if (!globalForDb.__habitatorInit) {
+    globalForDb.__habitatorInit = initialize();
+  }
+  return globalForDb.__habitatorInit;
+}
+
+// ── Query helpers ───────────────────────────────────────────────────
+
+/** Run a parameterized query and return all rows. */
+export async function many<T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  params: unknown[] = []
+): Promise<T[]> {
+  await ready();
+  const res = await rawPool().query<T>(text, params as unknown[]);
+  return res.rows;
+}
+
+/** Run a parameterized query and return the first row (or undefined). */
+export async function one<T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  params: unknown[] = []
+): Promise<T | undefined> {
+  const rows = await many<T>(text, params);
+  return rows[0];
+}
+
+/** Run a statement and return the number of affected rows. */
+export async function run(
+  text: string,
+  params: unknown[] = []
+): Promise<number> {
+  await ready();
+  const res = await rawPool().query(text, params as unknown[]);
+  return res.rowCount ?? 0;
+}
+
+/**
+ * Run `fn` inside a single transaction on a dedicated client. Commits on
+ * success, rolls back on any thrown error.
+ */
+export async function tx<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  await ready();
+  const client = await rawPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/** True for a Postgres unique-violation error (SQLSTATE 23505). */
+export function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: unknown }).code === '23505'
+  );
+}

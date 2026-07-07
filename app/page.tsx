@@ -1,14 +1,16 @@
 import Link from 'next/link';
 import DateNav from '@/components/DateNav';
 import TodayClient from '@/components/TodayClient';
-import PushupSummary from '@/components/PushupSummary';
+import RepProgramSummary from '@/components/RepProgramSummary';
 import AnkiSummary from '@/components/AnkiSummary';
 import Footer from '@/components/Footer';
 import { listActiveHabits } from '@/lib/habits';
 import { statusMapForDate } from '@/lib/entries';
 import { getCurrentStreak } from '@/lib/stats';
 import { getPushupState } from '@/lib/pushups';
+import { getPullupState } from '@/lib/pullups';
 import { getAnkiState } from '@/lib/anki';
+import { requireUserId } from '@/lib/auth';
 import {
   addDays,
   compareISO,
@@ -21,11 +23,12 @@ import type { HabitDayView } from '@/lib/types';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export default function TodayPage({
+export default async function TodayPage({
   searchParams,
 }: {
   searchParams: { date?: string };
 }) {
+  const userId = await requireUserId();
   const tz = getTimezone();
   const today = todayISO(tz);
 
@@ -35,23 +38,27 @@ export default function TodayPage({
     selected = today;
   }
 
-  const statusMap = statusMapForDate(selected);
-  const items: HabitDayView[] = listActiveHabits()
-    .filter((h) => compareISO(h.start_date, selected) <= 0)
-    .map((habit) => ({
+  const statusMap = await statusMapForDate(userId, selected);
+  const activeHabits = (await listActiveHabits(userId)).filter(
+    (h) => compareISO(h.start_date, selected) <= 0
+  );
+  const items: HabitDayView[] = await Promise.all(
+    activeHabits.map(async (habit) => ({
       habit,
       status: statusMap.get(habit.id) ?? null,
-      currentStreak: getCurrentStreak(habit.id),
-    }));
+      currentStreak: await getCurrentStreak(userId, habit.id),
+    }))
+  );
 
   const prevDate = addDays(selected, -1);
   const nextDate = compareISO(selected, today) < 0 ? addDays(selected, 1) : null;
 
-  // The pushup program is a "today" action (it advances by completed session,
-  // not calendar date), so only surface its card on the current day.
+  // The rep programs are "today" actions (they advance by completed session,
+  // not calendar date), so only surface their cards on the current day.
   const isToday = selected === today;
-  const pushupState = isToday ? getPushupState(tz) : null;
-  const ankiState = isToday ? getAnkiState(tz) : null;
+  const pushupState = isToday ? await getPushupState(userId, tz) : null;
+  const pullupState = isToday ? await getPullupState(userId, tz) : null;
+  const ankiState = isToday ? await getAnkiState(userId, tz) : null;
 
   return (
     <main className="pb-28 pt-4">
@@ -62,7 +69,8 @@ export default function TodayPage({
         <DateNav date={selected} prevDate={prevDate} nextDate={nextDate} today={today} />
       </header>
 
-      {pushupState && <PushupSummary state={pushupState} />}
+      {pushupState && <RepProgramSummary state={pushupState} />}
+      {pullupState && <RepProgramSummary state={pullupState} />}
       {ankiState && <AnkiSummary state={ankiState} />}
 
       <TodayClient date={selected} initialItems={items} />
