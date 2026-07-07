@@ -9,6 +9,7 @@ import { normalizeSchedule } from './schedule';
 import type {
   AnkiDayInput,
   HabitInput,
+  RepProgramInput,
   StartFastInput,
   UpdateFastInput,
 } from './types';
@@ -235,6 +236,79 @@ export function parseRepSets(body: unknown, sets = 3): ParseResult<number[]> {
     reps.push(n);
   }
   return { ok: true, value: reps };
+}
+
+// ── User-defined rep programs ───────────────────────────────────────
+
+const MAX_SETS = 10;
+const MAX_PROGRAM_DAYS = 2000;
+const MAX_REST_SECONDS = 3600; // 1 hour between sets is plenty
+const MAX_DAY1_PER_SET = 1000;
+
+/**
+ * Validate a NEW rep program's config: name + ramp (sets, day-1 total, program
+ * length, rest). `day1_total` must be at least `sets` (so each set gets ≥ 1 rep)
+ * and no more than sets × 1000.
+ */
+export function parseRepProgramInput(body: unknown): ParseResult<RepProgramInput> {
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
+
+  const name = asString(b.name).trim();
+  if (name.length === 0) return { ok: false, error: 'Name is required.' };
+  if (name.length > 200) return { ok: false, error: 'Name is too long.' };
+
+  const sets = coerceInt(b.sets, 1, MAX_SETS);
+  if (sets === null) {
+    return { ok: false, error: `Sets must be a whole number 1–${MAX_SETS}.` };
+  }
+  const day1_total = coerceInt(b.day1_total, sets, sets * MAX_DAY1_PER_SET);
+  if (day1_total === null) {
+    return {
+      ok: false,
+      error: `Day-1 total reps must be a whole number ${sets}–${sets * MAX_DAY1_PER_SET}.`,
+    };
+  }
+  const program_days = coerceInt(b.program_days, 1, MAX_PROGRAM_DAYS);
+  if (program_days === null) {
+    return {
+      ok: false,
+      error: `Program length must be a whole number 1–${MAX_PROGRAM_DAYS} days.`,
+    };
+  }
+  const rest_seconds = coerceInt(b.rest_seconds, 0, MAX_REST_SECONDS);
+  if (rest_seconds === null) {
+    return {
+      ok: false,
+      error: `Rest must be a whole number 0–${MAX_REST_SECONDS} seconds.`,
+    };
+  }
+
+  return {
+    ok: true,
+    value: { name, sets, day1_total, program_days, rest_seconds },
+  };
+}
+
+/** Validate an EDIT to a rep program — only name + rest (ramp is frozen). */
+export function parseRepProgramEdit(
+  body: unknown
+): ParseResult<{ name: string; rest_seconds: number }> {
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
+
+  const name = asString(b.name).trim();
+  if (name.length === 0) return { ok: false, error: 'Name is required.' };
+  if (name.length > 200) return { ok: false, error: 'Name is too long.' };
+
+  const rest_seconds = coerceInt(b.rest_seconds, 0, MAX_REST_SECONDS);
+  if (rest_seconds === null) {
+    return {
+      ok: false,
+      error: `Rest must be a whole number 0–${MAX_REST_SECONDS} seconds.`,
+    };
+  }
+  return { ok: true, value: { name, rest_seconds } };
 }
 
 // ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────

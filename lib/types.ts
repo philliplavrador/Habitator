@@ -141,20 +141,55 @@ export interface UpdateFastInput {
 // progression driven purely by the count of completed sessions. The generic
 // engine (lib/repProgram.ts) is configured once per program.
 
-/** Which rep program a row/route/URL belongs to. */
+/** Which built-in rep program a row/route/URL belongs to. */
 export type RepProgramKey = 'pushups' | 'pullups';
 
-/** Static definition of one rep program. */
+/**
+ * Static definition of one rep program. Powers both the two built-ins
+ * (pushups/pullups, each its own table) and user-defined programs (which share
+ * `rep_program_sessions`, scoped by `programId`). The engine (lib/repProgram.ts)
+ * is identical for both; only the config differs.
+ */
 export interface RepProgramConfig {
-  key: RepProgramKey;
-  table: string; // sqlite table name
-  label: string; // "Pushups" | "Pullups"
-  sets: number; // sets per day (3)
-  day1Total: number; // total reps on day 1 (pushups 54, pullups 15)
+  /** Filename-safe slug used as the media prefix: 'pushups' | 'pullups' | `rep<id>`. */
+  key: string;
+  table: string; // the sessions table for this program
+  /** User-defined programs only: the rep_programs row id, scoping every query.
+   *  Absent for the two built-ins (their tables have no program_id column). */
+  programId?: number;
+  label: string; // display name
+  sets: number; // sets per day
+  day1Total: number; // total reps on day 1
   programDays: number; // length of the ramp
   restSeconds: number; // rest between sets
   /** Human blurb for the finished state, e.g. "3 × 50". */
   finishLabel: string;
+  /** API base for this program, e.g. '/api/pushups' or '/api/rep-programs/5'. */
+  basePath: string;
+  /** Screen path, e.g. '/pushups' or '/rep-programs/5'. */
+  href: string;
+}
+
+/** A user-defined rep program — the configurable "template instance". */
+export interface RepProgramRow {
+  id: number;
+  name: string;
+  sets: number;
+  day1_total: number;
+  program_days: number;
+  rest_seconds: number;
+  sort_order: number;
+  archived: number; // 0 | 1
+  created_at: string;
+}
+
+/** Input accepted when creating/updating a user rep program. */
+export interface RepProgramInput {
+  name: string;
+  sets: number;
+  day1_total: number;
+  program_days: number;
+  rest_seconds: number;
 }
 
 /** One logged attempt at a program day (may or may not have completed it). */
@@ -181,7 +216,9 @@ export interface RepSession {
 
 /** The computed state of a rep program — drives its card + Today summary. */
 export interface RepProgramState {
-  key: RepProgramKey;
+  key: string; // filename-safe slug (see RepProgramConfig.key)
+  basePath: string; // API base, e.g. '/api/pushups' or '/api/rep-programs/5'
+  href: string; // screen path, e.g. '/pushups' or '/rep-programs/5'
   label: string;
   programDays: number;
   restSeconds: number;

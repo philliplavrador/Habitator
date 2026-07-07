@@ -10,6 +10,7 @@ import { getCurrentStreaksBatch } from '@/lib/stats';
 import { isDueOn, weekStartOf } from '@/lib/schedule';
 import { getPushupState } from '@/lib/pushups';
 import { getPullupState } from '@/lib/pullups';
+import { listRepProgramStates } from '@/lib/repPrograms';
 import { getAnkiState } from '@/lib/anki';
 import { requirePageContext } from '@/lib/pageContext';
 import {
@@ -77,17 +78,23 @@ export default async function TodayPage({
   const isToday = selected === today;
   const pushupState = isToday ? await getPushupState(userId, tz) : null;
   const pullupState = isToday ? await getPullupState(userId, tz) : null;
+  // User-defined rep programs (the configurable "template instances") surface the
+  // same summary widget as the two built-ins, inline in the habit list.
+  const userRepStates = isToday ? await listRepProgramStates(userId, tz) : [];
   const ankiState = isToday ? await getAnkiState(userId, tz) : null;
 
-  // Pushups/pullups/japanese are custom habits, not separate destinations, so
-  // their summary widgets flow inline with the habit list rather than being
-  // pinned above it. (Data lives in its own domains; only the presentation is
-  // unified.) Rendered server-side and handed to TodayClient as a prop.
+  // Pushups/pullups/japanese/custom rep programs are custom habits, not separate
+  // destinations, so their summary widgets flow inline with the habit list
+  // rather than being pinned above it. (Data lives in its own domains; only the
+  // presentation is unified.) Rendered server-side and handed to TodayClient.
   const widgets =
-    pushupState || pullupState || ankiState ? (
+    pushupState || pullupState || ankiState || userRepStates.length > 0 ? (
       <>
         {pushupState && <RepProgramSummary state={pushupState} />}
         {pullupState && <RepProgramSummary state={pullupState} />}
+        {userRepStates.map((s) => (
+          <RepProgramSummary key={s.basePath} state={s} />
+        ))}
         {ankiState && <AnkiSummary state={ankiState} />}
       </>
     ) : null;

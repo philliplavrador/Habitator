@@ -11,7 +11,6 @@ import crypto from 'node:crypto';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { dataDir } from './db';
-import type { RepProgramKey } from './types';
 
 /**
  * Hard upper bound on a stored video. Uploads STREAM straight to disk (see
@@ -91,7 +90,7 @@ const tooLargeError = `Video too large (max ${Math.round(
  * for per-set videos, omit it for the whole-workout video.
  */
 export async function saveVideoStream(
-  key: RepProgramKey,
+  key: string,
   sessionId: number,
   body: ReadableStream<Uint8Array> | null,
   meta: { filename: string; contentType: string },

@@ -24,6 +24,8 @@ interface RepProgramPageProps {
   title: string;
   /** The subtitle sentence, built from the fetched state (per-page copy). */
   subtitle: (state: RepProgramState) => ReactNode;
+  /** Optional footer actions (e.g. edit/delete for a user-defined program). */
+  actions?: ReactNode;
 }
 
 /**
@@ -37,6 +39,7 @@ export default async function RepProgramPage({
   listSessions,
   title,
   subtitle,
+  actions,
 }: RepProgramPageProps) {
   const { userId, tz, today } = await requirePageContext();
   const state = await getState(userId, tz);
@@ -122,7 +125,9 @@ export default async function RepProgramPage({
         </section>
       )}
 
-      <RepProgramHistory program={state.key} sessions={sessions} />
+      <RepProgramHistory basePath={state.basePath} sessions={sessions} />
+
+      {actions}
     </main>
   );
 }

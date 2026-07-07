@@ -73,6 +73,19 @@ export interface RepProgram {
 export function createRepProgram(config: RepProgramConfig): RepProgram {
   const t = config.table; // internal constant, never user input → safe to inline
 
+  // User-defined programs share `rep_program_sessions`, so every query is
+  // additionally scoped to the program's row id. `programId` is a validated
+  // INTEGER resolved server-side (see lib/repPrograms.resolveUserProgram) — safe
+  // to inline like the table name. For the two built-ins it's absent, so
+  // `progFilter` is '' and their SQL stays byte-identical to before.
+  const pid = config.programId;
+  if (pid != null && !Number.isInteger(pid)) {
+    throw new Error('rep program id must be an integer');
+  }
+  const progFilter = pid != null ? ` AND program_id = ${pid}` : '';
+  const progInsertCol = pid != null ? 'program_id, ' : '';
+  const progInsertVal = pid != null ? `${pid}, ` : '';
+
   // Rows store target/reps as JSON text and `completed` as a 0/1 INTEGER — these
   // shapes are the MIGRATION-FIDELITY invariant (see lib/db.ts SCHEMA notes):
   // SQLite rows copy across verbatim, so hydrate MUST mirror them exactly —
@@ -125,7 +138,7 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
 
   async function list(userId: number): Promise<RepSession[]> {
     const rows = await many(
-      `SELECT * FROM ${t} WHERE user_id = $1 ORDER BY id DESC`,
+      `SELECT * FROM ${t} WHERE user_id = $1${progFilter} ORDER BY id DESC`,
       [userId]
     );
     return rows.map(hydrate);
@@ -136,7 +149,7 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     tz: string
   ): Promise<RepProgramState> {
     const doneRow = await one<{ c: number }>(
-      `SELECT COUNT(*)::int AS c FROM ${t} WHERE user_id = $1 AND completed = 1`,
+      `SELECT COUNT(*)::int AS c FROM ${t} WHERE user_id = $1 AND completed = 1${progFilter}`,
       [userId]
     );
     const done = doneRow?.c ?? 0;
@@ -151,17 +164,17 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     const today = todayISO(tz);
 
     const latest = await one(
-      `SELECT * FROM ${t} WHERE user_id = $1 ORDER BY id DESC LIMIT 1`,
+      `SELECT * FROM ${t} WHERE user_id = $1${progFilter} ORDER BY id DESC LIMIT 1`,
       [userId]
     );
     const todayDone = await one(
-      `SELECT * FROM ${t} WHERE user_id = $1 AND completed = 1 AND date = $2
+      `SELECT * FROM ${t} WHERE user_id = $1 AND completed = 1 AND date = $2${progFilter}
        ORDER BY id DESC LIMIT 1`,
       [userId, today]
     );
     const dates = (
       await many<{ date: string }>(
-        `SELECT DISTINCT date FROM ${t} WHERE user_id = $1 ORDER BY date ASC`,
+        `SELECT DISTINCT date FROM ${t} WHERE user_id = $1${progFilter} ORDER BY date ASC`,
         [userId]
       )
     ).map((r) => r.date);
@@ -169,6 +182,8 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
 
     return {
       key: config.key,
+      basePath: config.basePath,
+      href: config.href,
       label: config.label,
       programDays: config.programDays,
       restSeconds: config.restSeconds,
@@ -190,10 +205,10 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     userId: number,
     id: number
   ): Promise<RepSession | undefined> {
-    const row = await one(`SELECT * FROM ${t} WHERE id = $1 AND user_id = $2`, [
-      id,
-      userId,
-    ]);
+    const row = await one(
+      `SELECT * FROM ${t} WHERE id = $1 AND user_id = $2${progFilter}`,
+      [id, userId]
+    );
     return row ? hydrate(row) : undefined;
   }
 
@@ -207,8 +222,8 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     const target = forDay(state.currentDay);
     const completed = isComplete(target, reps);
     await run(
-      `INSERT INTO ${t} (user_id, date, day_index, target, reps, completed, video, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NULL, $7)`,
+      `INSERT INTO ${t} (${progInsertCol}user_id, date, day_index, target, reps, completed, video, created_at)
+       VALUES (${progInsertVal}$1, $2, $3, $4, $5, $6, NULL, $7)`,
       [
         userId,
         todayISO(tz),
@@ -234,7 +249,7 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     if (!existing) return undefined;
     const completed = isComplete(existing.target, reps);
     await run(
-      `UPDATE ${t} SET reps = $1, completed = $2 WHERE id = $3 AND user_id = $4`,
+      `UPDATE ${t} SET reps = $1, completed = $2 WHERE id = $3 AND user_id = $4${progFilter}`,
       [JSON.stringify(reps.slice(0, config.sets)), completed ? 1 : 0, id, userId]
     );
     return get(userId, id);
@@ -246,7 +261,10 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
   ): Promise<RepSession | undefined> {
     const existing = await get(userId, id);
     if (!existing) return undefined;
-    await run(`DELETE FROM ${t} WHERE id = $1 AND user_id = $2`, [id, userId]);
+    await run(`DELETE FROM ${t} WHERE id = $1 AND user_id = $2${progFilter}`, [
+      id,
+      userId,
+    ]);
     return existing;
   }
 
@@ -256,11 +274,10 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     filename: string
   ): Promise<RepSession | undefined> {
     if (!(await get(userId, id))) return undefined;
-    await run(`UPDATE ${t} SET video = $1 WHERE id = $2 AND user_id = $3`, [
-      filename,
-      id,
-      userId,
-    ]);
+    await run(
+      `UPDATE ${t} SET video = $1 WHERE id = $2 AND user_id = $3${progFilter}`,
+      [filename, id, userId]
+    );
     return get(userId, id);
   }
 
@@ -269,10 +286,10 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     id: number
   ): Promise<RepSession | undefined> {
     if (!(await get(userId, id))) return undefined;
-    await run(`UPDATE ${t} SET video = NULL WHERE id = $1 AND user_id = $2`, [
-      id,
-      userId,
-    ]);
+    await run(
+      `UPDATE ${t} SET video = NULL WHERE id = $1 AND user_id = $2${progFilter}`,
+      [id, userId]
+    );
     return get(userId, id);
   }
 
@@ -292,14 +309,14 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     if (set < 0 || set >= config.sets) return undefined;
     return tx(async (client) => {
       const locked = await client.query(
-        `SELECT * FROM ${t} WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+        `SELECT * FROM ${t} WHERE id = $1 AND user_id = $2${progFilter} FOR UPDATE`,
         [id, userId]
       );
       if (locked.rows.length === 0) return undefined;
       const videos = [...hydrate(locked.rows[0]).videos];
       videos[set] = filename;
       const updated = await client.query(
-        `UPDATE ${t} SET videos = $1 WHERE id = $2 AND user_id = $3 RETURNING *`,
+        `UPDATE ${t} SET videos = $1 WHERE id = $2 AND user_id = $3${progFilter} RETURNING *`,
         [JSON.stringify(videos), id, userId]
       );
       return hydrate(updated.rows[0]);

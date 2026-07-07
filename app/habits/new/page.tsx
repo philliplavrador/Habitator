@@ -1,5 +1,5 @@
 import BackHeader from '@/components/BackHeader';
-import AddHabitForm from '@/components/AddHabitForm';
+import NewHabitFlow from '@/components/NewHabitFlow';
 import { requirePageContext } from '@/lib/pageContext';
 
 export const runtime = 'nodejs';
@@ -12,7 +12,7 @@ export default async function NewHabitPage() {
     <main className="py-4">
       <BackHeader href="/" title="New habit" />
 
-      <AddHabitForm tz={tz} />
+      <NewHabitFlow tz={tz} />
     </main>
   );
 }

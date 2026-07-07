@@ -115,6 +115,41 @@ CREATE TABLE IF NOT EXISTS anki_days (
 );
 CREATE INDEX IF NOT EXISTS idx_anki_user_date ON anki_days (user_id, date);
 
+-- User-defined rep programs — the configurable "template instances" that
+-- generalize the two built-ins (pushups/pullups). A row is one program's config;
+-- unlike the built-ins (each its own *_sessions table), every user program's
+-- sessions live in ONE shared table keyed by program_id.
+CREATE TABLE IF NOT EXISTS rep_programs (
+  id           SERIAL PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name         TEXT    NOT NULL,
+  sets         INTEGER NOT NULL,
+  day1_total   INTEGER NOT NULL,   -- total reps on day 1
+  program_days INTEGER NOT NULL,   -- length of the ramp
+  rest_seconds INTEGER NOT NULL,   -- rest between sets
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  archived     INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rep_programs_user ON rep_programs (user_id);
+
+CREATE TABLE IF NOT EXISTS rep_program_sessions (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  program_id INTEGER NOT NULL REFERENCES rep_programs(id) ON DELETE CASCADE,
+  date       TEXT    NOT NULL,            -- YYYY-MM-DD (local day of the attempt)
+  day_index  INTEGER NOT NULL,            -- program day this attempt targeted
+  target     TEXT    NOT NULL,            -- JSON [t1..] prescribed reps
+  reps       TEXT    NOT NULL,            -- JSON [r1..] actual reps done
+  completed  INTEGER NOT NULL,            -- 1 if reps met target on every set
+  video      TEXT,                        -- optional whole-workout video filename
+  videos     TEXT,                        -- optional JSON array of per-set filenames
+  created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rep_prog_sessions_prog ON rep_program_sessions (program_id);
+CREATE INDEX IF NOT EXISTS idx_rep_prog_sessions_user ON rep_program_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_rep_prog_sessions_completed ON rep_program_sessions (program_id, completed);
+
 -- Global key/value store for one-time bootstraps (e.g. the SQLite→Postgres
 -- migration flag). Not user-scoped.
 CREATE TABLE IF NOT EXISTS app_meta (

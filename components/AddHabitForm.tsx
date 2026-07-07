@@ -24,15 +24,17 @@ interface Props {
   habit?: Habit;
   /** Owner's timezone (resolved on the server) for the "today" default. */
   tz: string;
+  /** Preselect Build/Quit when creating (from the template picker). */
+  initialKind?: HabitKind;
 }
 
-export default function AddHabitForm({ habit, tz }: Props) {
+export default function AddHabitForm({ habit, tz, initialKind }: Props) {
   const router = useRouter();
   const confirm = useConfirm();
   const editing = Boolean(habit);
 
   const [name, setName] = useState(habit?.name ?? '');
-  const [kind, setKind] = useState<HabitKind>(habit?.kind ?? 'build');
+  const [kind, setKind] = useState<HabitKind>(habit?.kind ?? initialKind ?? 'build');
 
   // Schedule sub-state. Kept as separate fields so switching kinds preserves
   // what you last entered; assembled into a Schedule at submit (build only —

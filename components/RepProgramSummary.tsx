@@ -13,7 +13,7 @@ export default function RepProgramSummary({ state }: { state: RepProgramState })
   return (
     <SummaryCard
       title={state.label}
-      href={`/${state.key}`}
+      href={state.href}
       pct={pct}
       complete={state.programComplete}
       badge={`Day ${state.currentDay} of ${state.programDays}`}

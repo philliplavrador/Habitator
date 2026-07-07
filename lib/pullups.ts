@@ -14,6 +14,8 @@ export const PULLUP_CONFIG: RepProgramConfig = {
   programDays: 46, // day 46 → 60 total → 3 × 20
   restSeconds: 180, // 3 minutes
   finishLabel: '3 × 20',
+  basePath: '/api/pullups',
+  href: '/pullups',
 };
 
 /** The configured pullup program instance (state + CRUD + video). */

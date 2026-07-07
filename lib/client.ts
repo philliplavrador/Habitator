@@ -6,7 +6,8 @@ import type {
   Fast,
   Habit,
   HabitInput,
-  RepProgramKey,
+  RepProgramInput,
+  RepProgramRow,
   RepProgramState,
   StartFastInput,
   UpdateFastInput,
@@ -134,23 +135,25 @@ export async function apiDeleteFast(id: number): Promise<void> {
   await request(`/api/fasts/${id}`, 'DELETE');
 }
 
-// ── Rep programs (pushups / pullups) ────────────────────────────────
-// All keyed by the program so the pushup and pullup screens share one client.
+// ── Rep programs (pushups / pullups / user programs) ────────────────
+// Keyed by the program's API base path (`state.basePath`), so the built-in and
+// user-defined screens share one client. Examples: '/api/pushups' or
+// '/api/rep-programs/5'.
 
 export async function apiLogReps(
-  program: RepProgramKey,
+  basePath: string,
   reps: number[]
 ): Promise<RepProgramState> {
-  return requestJson<RepProgramState>(`/api/${program}`, 'POST', 'state', { reps });
+  return requestJson<RepProgramState>(basePath, 'POST', 'state', { reps });
 }
 
 export async function apiUpdateReps(
-  program: RepProgramKey,
+  basePath: string,
   id: number,
   reps: number[]
 ): Promise<RepProgramState> {
   return requestJson<RepProgramState>(
-    `/api/${program}/${id}`,
+    `${basePath}/${id}`,
     'PATCH',
     'state',
     { reps }
@@ -158,27 +161,27 @@ export async function apiUpdateReps(
 }
 
 export async function apiDeleteRepSession(
-  program: RepProgramKey,
+  basePath: string,
   id: number
 ): Promise<RepProgramState> {
-  return requestJson<RepProgramState>(`/api/${program}/${id}`, 'DELETE', 'state');
+  return requestJson<RepProgramState>(`${basePath}/${id}`, 'DELETE', 'state');
 }
 
 /** Attach or replace the whole-workout video on a session. Returns fresh state. */
 export async function apiUploadRepVideo(
-  program: RepProgramKey,
+  basePath: string,
   id: number,
   file: File
 ): Promise<RepProgramState> {
-  return putVideo(`/api/${program}/${id}/video`, file);
+  return putVideo(`${basePath}/${id}/video`, file);
 }
 
 export async function apiDeleteRepVideo(
-  program: RepProgramKey,
+  basePath: string,
   id: number
 ): Promise<RepProgramState> {
   return requestJson<RepProgramState>(
-    `/api/${program}/${id}/video`,
+    `${basePath}/${id}/video`,
     'DELETE',
     'state'
   );
@@ -186,24 +189,48 @@ export async function apiDeleteRepVideo(
 
 /** Attach or replace one set's video (0-based index). Returns fresh state. */
 export async function apiUploadRepSetVideo(
-  program: RepProgramKey,
+  basePath: string,
   id: number,
   set: number,
   file: File
 ): Promise<RepProgramState> {
-  return putVideo(`/api/${program}/${id}/video/${set}`, file);
+  return putVideo(`${basePath}/${id}/video/${set}`, file);
 }
 
 export async function apiDeleteRepSetVideo(
-  program: RepProgramKey,
+  basePath: string,
   id: number,
   set: number
 ): Promise<RepProgramState> {
   return requestJson<RepProgramState>(
-    `/api/${program}/${id}/video/${set}`,
+    `${basePath}/${id}/video/${set}`,
     'DELETE',
     'state'
   );
+}
+
+// ── User rep-program config (create / edit / delete the program itself) ──
+
+export async function apiCreateRepProgram(
+  input: RepProgramInput
+): Promise<RepProgramRow> {
+  return requestJson<RepProgramRow>('/api/rep-programs', 'POST', 'program', input);
+}
+
+export async function apiUpdateRepProgram(
+  id: number,
+  fields: { name: string; rest_seconds: number }
+): Promise<RepProgramRow> {
+  return requestJson<RepProgramRow>(
+    `/api/rep-programs/${id}`,
+    'PATCH',
+    'program',
+    fields
+  );
+}
+
+export async function apiDeleteRepProgram(id: number): Promise<void> {
+  await request(`/api/rep-programs/${id}`, 'DELETE');
 }
 
 // ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────

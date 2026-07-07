@@ -14,22 +14,23 @@ import {
   apiUploadRepVideo,
 } from '@/lib/client';
 import { formatHuman } from '@/lib/dates';
-import type { RepProgramKey, RepSession } from '@/lib/types';
+import type { RepSession } from '@/lib/types';
 
 interface Props {
-  program: RepProgramKey;
+  /** The program's API base, e.g. '/api/pushups' or '/api/rep-programs/5'. */
+  basePath: string;
   sessions: RepSession[];
 }
 
 /** Editable log of every session for a rep program, newest first. */
-export default function RepProgramHistory({ program, sessions }: Props) {
+export default function RepProgramHistory({ basePath, sessions }: Props) {
   if (sessions.length === 0) return null;
   return (
     <section className="mt-6">
       <h2 className="mb-3 text-base font-bold text-text-primary">Session history</h2>
       <ul className="flex flex-col gap-2">
         {sessions.map((s) => (
-          <SessionRow key={s.id} program={program} session={s} />
+          <SessionRow key={s.id} basePath={basePath} session={s} />
         ))}
       </ul>
       <p className="mt-2 text-xs text-text-muted">
@@ -44,10 +45,10 @@ export default function RepProgramHistory({ program, sessions }: Props) {
 type UploadTarget = { kind: 'workout' } | { kind: 'set'; index: number };
 
 function SessionRow({
-  program,
+  basePath,
   session,
 }: {
-  program: RepProgramKey;
+  basePath: string;
   session: RepSession;
 }) {
   const router = useRouter();
@@ -59,12 +60,12 @@ function SessionRow({
   const fileRef = useRef<HTMLInputElement>(null);
 
   const workoutUrl = session.video
-    ? `/api/${program}/${session.id}/video?v=${encodeURIComponent(session.video)}`
+    ? `${basePath}/${session.id}/video?v=${encodeURIComponent(session.video)}`
     : null;
   const setUrl = (i: number) => {
     const name = session.videos[i];
     return name
-      ? `/api/${program}/${session.id}/video/${i}?v=${encodeURIComponent(name)}`
+      ? `${basePath}/${session.id}/video/${i}?v=${encodeURIComponent(name)}`
       : null;
   };
   const hasAnyVideo = !!workoutUrl || session.videos.some(Boolean);
@@ -74,7 +75,7 @@ function SessionRow({
       const n = parseInt(r, 10);
       return Number.isFinite(n) && n >= 0 ? n : 0;
     });
-    await apiUpdateReps(program, session.id, parsed);
+    await apiUpdateReps(basePath, session.id, parsed);
   }
 
   return (
@@ -86,7 +87,7 @@ function SessionRow({
         confirmLabel: 'Delete',
       }}
       onSave={save}
-      onDelete={() => apiDeleteRepSession(program, session.id)}
+      onDelete={() => apiDeleteRepSession(basePath, session.id)}
       onCancel={() => setReps(session.reps.map(String))}
       read={
         <>
@@ -145,9 +146,9 @@ function SessionRow({
           run(
             async () => {
               if (target.kind === 'workout') {
-                await apiUploadRepVideo(program, session.id, file);
+                await apiUploadRepVideo(basePath, session.id, file);
               } else {
-                await apiUploadRepSetVideo(program, session.id, target.index, file);
+                await apiUploadRepSetVideo(basePath, session.id, target.index, file);
               }
               // Collapse any open player: a replace mints a new filename, so the
               // `playing` URL would otherwise point at the now-deleted old file
@@ -175,7 +176,7 @@ function SessionRow({
           run(
             async () => {
               if (playing === workoutUrl) setPlaying(null);
-              await apiDeleteRepVideo(program, session.id);
+              await apiDeleteRepVideo(basePath, session.id);
               router.refresh();
             },
             { errorTitle: 'Could not remove video' }
@@ -193,7 +194,7 @@ function SessionRow({
           run(
             async () => {
               if (playing === setUrl(i)) setPlaying(null);
-              await apiDeleteRepSetVideo(program, session.id, i);
+              await apiDeleteRepSetVideo(basePath, session.id, i);
               router.refresh();
             },
             { errorTitle: 'Could not remove video' }

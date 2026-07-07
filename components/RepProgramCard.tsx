@@ -132,14 +132,14 @@ export default function RepProgramCard({ initialState }: Props) {
     setError(null);
     setFlash(null);
     try {
-      let next = await apiLogReps(state.key, parsed);
+      let next = await apiLogReps(state.basePath, parsed);
       const sessionId = next.lastAttempt?.id;
       if (sessionId != null && setVideos.some(Boolean)) {
         for (let i = 0; i < setVideos.length; i++) {
           const file = setVideos[i];
           if (!file) continue;
           try {
-            next = await apiUploadRepSetVideo(state.key, sessionId, i, file);
+            next = await apiUploadRepSetVideo(state.basePath, sessionId, i, file);
           } catch (e) {
             show({
               tone: 'error',
@@ -168,11 +168,11 @@ export default function RepProgramCard({ initialState }: Props) {
     setError(null);
     setFlash(null);
     try {
-      let next = await apiLogReps(state.key, guidedReps);
+      let next = await apiLogReps(state.basePath, guidedReps);
       const sessionId = next.lastAttempt?.id;
       if (sessionId != null) {
         try {
-          next = await apiUploadRepVideo(state.key, sessionId, video);
+          next = await apiUploadRepVideo(state.basePath, sessionId, video);
         } catch (e) {
           show({
             tone: 'error',

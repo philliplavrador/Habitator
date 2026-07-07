@@ -16,26 +16,41 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const [habits, entries, fasts, pushupSessions, pullupSessions, ankiDays] =
-    await Promise.all([
-      many('SELECT * FROM habits WHERE user_id = $1 ORDER BY id ASC', [userId]),
-      many(
-        'SELECT * FROM entries WHERE user_id = $1 ORDER BY habit_id ASC, date ASC',
-        [userId]
-      ),
-      many('SELECT * FROM fasts WHERE user_id = $1 ORDER BY start_at ASC, id ASC', [
-        userId,
-      ]),
-      many('SELECT * FROM pushup_sessions WHERE user_id = $1 ORDER BY id ASC', [
-        userId,
-      ]),
-      many('SELECT * FROM pullup_sessions WHERE user_id = $1 ORDER BY id ASC', [
-        userId,
-      ]),
-      many('SELECT * FROM anki_days WHERE user_id = $1 ORDER BY date ASC', [
-        userId,
-      ]),
-    ]);
+  const [
+    habits,
+    entries,
+    fasts,
+    pushupSessions,
+    pullupSessions,
+    repPrograms,
+    repProgramSessions,
+    ankiDays,
+  ] = await Promise.all([
+    many('SELECT * FROM habits WHERE user_id = $1 ORDER BY id ASC', [userId]),
+    many(
+      'SELECT * FROM entries WHERE user_id = $1 ORDER BY habit_id ASC, date ASC',
+      [userId]
+    ),
+    many('SELECT * FROM fasts WHERE user_id = $1 ORDER BY start_at ASC, id ASC', [
+      userId,
+    ]),
+    many('SELECT * FROM pushup_sessions WHERE user_id = $1 ORDER BY id ASC', [
+      userId,
+    ]),
+    many('SELECT * FROM pullup_sessions WHERE user_id = $1 ORDER BY id ASC', [
+      userId,
+    ]),
+    many('SELECT * FROM rep_programs WHERE user_id = $1 ORDER BY id ASC', [
+      userId,
+    ]),
+    many(
+      'SELECT * FROM rep_program_sessions WHERE user_id = $1 ORDER BY program_id ASC, id ASC',
+      [userId]
+    ),
+    many('SELECT * FROM anki_days WHERE user_id = $1 ORDER BY date ASC', [
+      userId,
+    ]),
+  ]);
 
   // Backup envelope. `version` and the table list below are coupled to the DB
   // schema (lib/db.ts): each `version` pins the exact set of tables/columns a
@@ -46,16 +61,19 @@ export async function GET() {
   // dump holds. (version 6 = habits, entries, fasts, pushupSessions,
   // pullupSessions, ankiDays. version 7 added *_sessions.videos — the per-set
   // video array. version 8 added habits.kind — 'build' | 'quit'. version 9
-  // added habits.schedule — JSON-in-TEXT, NULL means daily.)
+  // added habits.schedule — JSON-in-TEXT, NULL means daily. version 10 added the
+  // user-defined rep programs: repPrograms + repProgramSessions.)
   const payload = {
     app: 'habitator',
-    version: 9,
+    version: 10,
     exportedAt: new Date().toISOString(),
     habits,
     entries,
     fasts,
     pushupSessions,
     pullupSessions,
+    repPrograms,
+    repProgramSessions,
     ankiDays,
   };
 

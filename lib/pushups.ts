@@ -14,6 +14,8 @@ export const PUSHUP_CONFIG: RepProgramConfig = {
   programDays: 97,
   restSeconds: 90,
   finishLabel: '3 × 50',
+  basePath: '/api/pushups',
+  href: '/pushups',
 };
 
 /** The configured pushup program instance (state + CRUD + video). */

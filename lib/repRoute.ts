@@ -1,9 +1,14 @@
-// Route-handler factories shared by the pushup and pullup API routes. Each
-// program's route.ts just binds these to its configured program instance, so
-// the request/response contract stays identical across both.
+// Route-handler factories shared by EVERY rep-program API — the two built-ins
+// (pushups, pullups) and the user-defined programs. Each factory takes a
+// `resolve(userId, params)` that yields the program the request acts on:
+//   • built-ins bind a constant program (params ignored),
+//   • user programs resolve it from the `[id]` route segment per request.
+// The session id is read from a configurable param name (default `id`; the user
+// routes nest it under `[id]/[sid]`, so they pass `sid`). This keeps ONE copy of
+// the request/response + video crash-safety logic for all programs.
 //
 // Every handler resolves the logged-in user and scopes all program access to
-// them, so the two accounts' logs never cross.
+// them, so accounts' logs never cross.
 //
 // SERVER-ONLY.
 
@@ -19,6 +24,19 @@ import {
   deleteVideoFile,
   saveVideoStream,
 } from './media';
+
+/** Resolves the program a request targets, or null (bad/unknown/not-theirs). */
+export type ResolveProgram = (
+  userId: number,
+  params: Record<string, string>
+) => Promise<RepProgram | null> | RepProgram | null;
+
+type RouteCtx = { params: Record<string, string> } | undefined;
+
+const paramsOf = (ctx: RouteCtx): Record<string, string> => ctx?.params ?? {};
+
+const programNotFound = () =>
+  NextResponse.json({ error: 'Program not found.' }, { status: 404 });
 
 /** The whole-workout + all per-set video filenames on a session, de-nulled. */
 function allVideoFiles(session: {
@@ -53,20 +71,24 @@ function uploadMeta(req: NextRequest): { filename: string; contentType: string }
   return { filename: name, contentType: req.headers.get('content-type') ?? '' };
 }
 
-// GET  /api/<prog>        → computed program state
-// POST /api/<prog>  { reps } → log an attempt at the current day
-export function createRepCollectionRoute(program: RepProgram) {
-  async function GET() {
+// GET  /api/<prog>            → computed program state
+// POST /api/<prog>  { reps }  → log an attempt at the current day
+export function createRepCollectionRoute(resolve: ResolveProgram) {
+  async function GET(_req: NextRequest, ctx: RouteCtx) {
     const userId = await getCurrentUserId();
     if (userId === null) return unauthorized();
+    const program = await resolve(userId, paramsOf(ctx));
+    if (!program) return programNotFound();
     return NextResponse.json({
       state: await program.getState(userId, getTimezone()),
     });
   }
 
-  async function POST(req: NextRequest) {
+  async function POST(req: NextRequest, ctx: RouteCtx) {
     const userId = await getCurrentUserId();
     if (userId === null) return unauthorized();
+    const program = await resolve(userId, paramsOf(ctx));
+    if (!program) return programNotFound();
     const body = await readJson(req);
     if (body === undefined) {
       return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 });
@@ -83,15 +105,18 @@ export function createRepCollectionRoute(program: RepProgram) {
 }
 
 // PATCH  /api/<prog>/[id]  { reps } → edit a session's reps
-// DELETE /api/<prog>/[id]           → remove a session (+ its video file)
-export function createRepItemRoute(program: RepProgram) {
-  async function PATCH(
-    req: NextRequest,
-    { params }: { params: { id: string } }
-  ) {
+// DELETE /api/<prog>/[id]           → remove a session (+ its video files)
+export function createRepItemRoute(
+  resolve: ResolveProgram,
+  sessionParam = 'id'
+) {
+  async function PATCH(req: NextRequest, ctx: RouteCtx) {
     const userId = await getCurrentUserId();
     if (userId === null) return unauthorized();
-    const id = parseId(params.id);
+    const params = paramsOf(ctx);
+    const program = await resolve(userId, params);
+    if (!program) return programNotFound();
+    const id = parseId(params[sessionParam]);
     if (id === null) {
       return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
@@ -113,13 +138,13 @@ export function createRepItemRoute(program: RepProgram) {
     });
   }
 
-  async function DELETE(
-    _req: NextRequest,
-    { params }: { params: { id: string } }
-  ) {
+  async function DELETE(_req: NextRequest, ctx: RouteCtx) {
     const userId = await getCurrentUserId();
     if (userId === null) return unauthorized();
-    const id = parseId(params.id);
+    const params = paramsOf(ctx);
+    const program = await resolve(userId, params);
+    if (!program) return programNotFound();
+    const id = parseId(params[sessionParam]);
     if (id === null) {
       return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
@@ -141,16 +166,19 @@ export function createRepItemRoute(program: RepProgram) {
 }
 
 // GET    /api/<prog>/[id]/video → stream the attached video (Range-aware)
-// PUT    /api/<prog>/[id]/video → attach/replace a video (multipart, field "video")
+// PUT    /api/<prog>/[id]/video → attach/replace a video (raw body)
 // DELETE /api/<prog>/[id]/video → detach + delete the video
-export function createRepVideoRoute(program: RepProgram) {
-  async function GET(
-    req: NextRequest,
-    { params }: { params: { id: string } }
-  ) {
+export function createRepVideoRoute(
+  resolve: ResolveProgram,
+  sessionParam = 'id'
+) {
+  async function GET(req: NextRequest, ctx: RouteCtx) {
     const userId = await getCurrentUserId();
     if (userId === null) return unauthorized();
-    const id = parseId(params.id);
+    const params = paramsOf(ctx);
+    const program = await resolve(userId, params);
+    if (!program) return programNotFound();
+    const id = parseId(params[sessionParam]);
     if (id === null) {
       return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
@@ -165,13 +193,13 @@ export function createRepVideoRoute(program: RepProgram) {
     return res;
   }
 
-  async function PUT(
-    req: NextRequest,
-    { params }: { params: { id: string } }
-  ) {
+  async function PUT(req: NextRequest, ctx: RouteCtx) {
     const userId = await getCurrentUserId();
     if (userId === null) return unauthorized();
-    const id = parseId(params.id);
+    const params = paramsOf(ctx);
+    const program = await resolve(userId, params);
+    if (!program) return programNotFound();
+    const id = parseId(params[sessionParam]);
     if (id === null) {
       return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
@@ -205,13 +233,13 @@ export function createRepVideoRoute(program: RepProgram) {
     });
   }
 
-  async function DELETE(
-    _req: NextRequest,
-    { params }: { params: { id: string } }
-  ) {
+  async function DELETE(_req: NextRequest, ctx: RouteCtx) {
     const userId = await getCurrentUserId();
     if (userId === null) return unauthorized();
-    const id = parseId(params.id);
+    const params = paramsOf(ctx);
+    const program = await resolve(userId, params);
+    if (!program) return programNotFound();
+    const id = parseId(params[sessionParam]);
     if (id === null) {
       return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
@@ -236,25 +264,28 @@ export function createRepVideoRoute(program: RepProgram) {
 // PUT    /api/<prog>/[id]/video/[set] → attach/replace that set's video (raw body)
 // DELETE /api/<prog>/[id]/video/[set] → detach + delete that set's video
 //
-// "set" is a 0-based index in [0, sets). This mirrors createRepVideoRoute but
-// targets one slot of the per-set `videos` array instead of the single `video`.
-export function createRepSetVideoRoute(program: RepProgram) {
+// "set" is a 0-based index in [0, sets). Mirrors createRepVideoRoute but targets
+// one slot of the per-set `videos` array instead of the single `video`.
+export function createRepSetVideoRoute(
+  resolve: ResolveProgram,
+  sessionParam = 'id'
+) {
   // A 0-based set index in range, or null. (parseId rejects 0, so it can't be
   // reused here — set 0 is the first, valid, set.)
-  function parseSet(raw: string): number | null {
+  function parseSet(raw: string | undefined, sets: number): number | null {
     const n = Number(raw);
-    if (!Number.isInteger(n) || n < 0 || n >= program.config.sets) return null;
+    if (!Number.isInteger(n) || n < 0 || n >= sets) return null;
     return n;
   }
 
-  async function GET(
-    req: NextRequest,
-    { params }: { params: { id: string; set: string } }
-  ) {
+  async function GET(req: NextRequest, ctx: RouteCtx) {
     const userId = await getCurrentUserId();
     if (userId === null) return unauthorized();
-    const id = parseId(params.id);
-    const set = parseSet(params.set);
+    const params = paramsOf(ctx);
+    const program = await resolve(userId, params);
+    if (!program) return programNotFound();
+    const id = parseId(params[sessionParam]);
+    const set = parseSet(params.set, program.config.sets);
     if (id === null || set === null) {
       return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
@@ -270,14 +301,14 @@ export function createRepSetVideoRoute(program: RepProgram) {
     return res;
   }
 
-  async function PUT(
-    req: NextRequest,
-    { params }: { params: { id: string; set: string } }
-  ) {
+  async function PUT(req: NextRequest, ctx: RouteCtx) {
     const userId = await getCurrentUserId();
     if (userId === null) return unauthorized();
-    const id = parseId(params.id);
-    const set = parseSet(params.set);
+    const params = paramsOf(ctx);
+    const program = await resolve(userId, params);
+    if (!program) return programNotFound();
+    const id = parseId(params[sessionParam]);
+    const set = parseSet(params.set, program.config.sets);
     if (id === null || set === null) {
       return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
@@ -308,14 +339,14 @@ export function createRepSetVideoRoute(program: RepProgram) {
     });
   }
 
-  async function DELETE(
-    _req: NextRequest,
-    { params }: { params: { id: string; set: string } }
-  ) {
+  async function DELETE(_req: NextRequest, ctx: RouteCtx) {
     const userId = await getCurrentUserId();
     if (userId === null) return unauthorized();
-    const id = parseId(params.id);
-    const set = parseSet(params.set);
+    const params = paramsOf(ctx);
+    const program = await resolve(userId, params);
+    if (!program) return programNotFound();
+    const id = parseId(params[sessionParam]);
+    const set = parseSet(params.set, program.config.sets);
     if (id === null || set === null) {
       return NextResponse.json({ error: 'Bad id.' }, { status: 400 });
     }
