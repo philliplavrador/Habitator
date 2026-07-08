@@ -42,6 +42,7 @@ export interface Habit {
   kind: HabitKind; // 'build' | 'quit' — see HabitKind
   schedule: Schedule; // when it's expected — see Schedule (raw column is JSON-in-TEXT)
   start_date: string; // YYYY-MM-DD
+  end_date: string | null; // YYYY-MM-DD upper bound; null ⇒ ongoing (no end)
   sort_order: number;
   archived: number; // 0 | 1 (SQLite has no boolean)
   created_at: string; // ISO timestamp
@@ -82,6 +83,7 @@ export interface HabitInput {
   kind: HabitKind;
   schedule: Schedule;
   start_date: string;
+  end_date: string | null; // YYYY-MM-DD upper bound; null ⇒ ongoing
 }
 
 /**

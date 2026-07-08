@@ -51,7 +51,7 @@ they set cookies — and aren't cached).
 - not found → `404 { error: '… not found.' }`
 
 ## export/route.ts — version + table list are coupled
-`GET /api/export` hardcodes `version: 7` **and** a fixed list of tables
+`GET /api/export` hardcodes a `version` **and** a fixed list of tables
 (habits, entries, fasts, pushup_sessions, pullup_sessions, anki_days). When you
 add a tracked domain **or a new column on an exported table**, bump `version`
 together with the change — the two must not drift. (v7 added `*_sessions.videos`,
@@ -61,4 +61,5 @@ the per-set video array; `SELECT *` already carries new columns through.)
 `POST /api/entries` confirms the habit belongs to the user before writing,
 because the entries uniqueness is `(habit_id, date)` **globally** (see
 `lib/CLAUDE.md`) — an unchecked `habitId` could clobber another account's row.
-It also rejects future dates and dates before the habit's `start_date`.
+It also rejects future dates and dates outside the habit's tracked window
+(before `start_date` or after `end_date`, when set).

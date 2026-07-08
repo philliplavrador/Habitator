@@ -7,6 +7,8 @@ interface Props {
   /** date (YYYY-MM-DD) → status, for this habit. */
   statusByDate: Record<string, EntryStatus>;
   startDate: string;
+  /** Optional end date (YYYY-MM-DD); days after it render faint ("after range"). */
+  endDate?: string | null;
   today: string;
   /** Number of weeks to show (columns). ~3 months by default. */
   weeks?: number;
@@ -23,6 +25,7 @@ const KIND_CLASS: Record<string, string> = {
   blank: 'bg-surface2',
   off: 'bg-surface2/30',
   before: 'bg-surface2/30',
+  after: 'bg-surface2/30',
   future: 'bg-transparent',
 };
 
@@ -40,6 +43,7 @@ const KIND_CLASS: Record<string, string> = {
 export default function Heatmap({
   statusByDate,
   startDate,
+  endDate = null,
   today,
   weeks = 14,
   kind = 'build',
@@ -78,6 +82,7 @@ export default function Heatmap({
     <ContributionGrid
       today={today}
       startDate={startDate}
+      endDate={endDate}
       columns={{ type: 'fixed', weeks }}
       classify={classify}
       kindClass={KIND_CLASS}

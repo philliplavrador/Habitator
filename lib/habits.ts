@@ -56,8 +56,8 @@ export async function createHabit(
   );
   const maxOrder = row?.maxorder ?? -1;
   const created = await one<HabitRow>(
-    `INSERT INTO habits (user_id, name, details, exceptions, kind, schedule, start_date, sort_order, archived, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9) RETURNING *`,
+    `INSERT INTO habits (user_id, name, details, exceptions, kind, schedule, start_date, end_date, sort_order, archived, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10) RETURNING *`,
     [
       userId,
       input.name,
@@ -66,6 +66,7 @@ export async function createHabit(
       input.kind,
       serializeSchedule(input.schedule),
       input.start_date,
+      input.end_date,
       maxOrder + 1,
       new Date().toISOString(),
     ]
@@ -80,8 +81,8 @@ export async function updateHabit(
   input: HabitInput
 ): Promise<Habit | undefined> {
   const changed = await run(
-    `UPDATE habits SET name = $1, details = $2, exceptions = $3, kind = $4, schedule = $5, start_date = $6
-     WHERE id = $7 AND user_id = $8`,
+    `UPDATE habits SET name = $1, details = $2, exceptions = $3, kind = $4, schedule = $5, start_date = $6, end_date = $7
+     WHERE id = $8 AND user_id = $9`,
     [
       input.name,
       input.details,
@@ -89,6 +90,7 @@ export async function updateHabit(
       input.kind,
       serializeSchedule(input.schedule),
       input.start_date,
+      input.end_date,
       id,
       userId,
     ]

@@ -15,6 +15,8 @@ interface Props {
   /** date (YYYY-MM-DD) → status, for this habit. */
   initialStatus: Record<string, EntryStatus>;
   startDate: string;
+  /** Optional end date (YYYY-MM-DD); days after it are out of range (disabled). */
+  endDate?: string | null;
   today: string;
   /** Habit kind — a `quit` habit edits slips only (see below). */
   kind?: HabitKind;
@@ -68,6 +70,7 @@ export default function HabitCalendar({
   habitId,
   initialStatus,
   startDate,
+  endDate = null,
   today,
   kind = 'build',
   schedule = { kind: 'daily' },
@@ -78,7 +81,13 @@ export default function HabitCalendar({
   const [statuses, setStatuses] = useState<Map<string, EntryStatus>>(
     () => new Map(Object.entries(initialStatus))
   );
-  const [month, setMonth] = useState(() => today.slice(0, 7));
+  // Open on the habit's last active month when it has already ended, so an ended
+  // habit doesn't land on an empty, fully-disabled current month. Otherwise today.
+  const [month, setMonth] = useState(() =>
+    endDate !== null && compareISO(endDate, today) < 0
+      ? endDate.slice(0, 7)
+      : today.slice(0, 7)
+  );
   const [selected, setSelected] = useState<string | null>(null);
   const pending = useRef<Set<string>>(new Set());
 
@@ -175,7 +184,8 @@ export default function HabitCalendar({
           const status = statuses.get(date);
           const isFuture = compareISO(date, today) > 0;
           const isBefore = compareISO(date, startDate) < 0;
-          const disabled = isFuture || isBefore;
+          const isAfterEnd = endDate !== null && compareISO(date, endDate) > 0;
+          const disabled = isFuture || isBefore || isAfterEnd;
           const isToday = date === today;
           // Off-day: in-range but not scheduled (weekday/interval habits). Still
           // tappable (you may log an extra day), just visually de-emphasized.

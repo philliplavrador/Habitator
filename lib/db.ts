@@ -172,6 +172,12 @@ ALTER TABLE habits ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'build';
 -- pre-existing/migrated row keeps daily semantics. Nullable + no default keeps
 -- migrate.ts's explicit-column INSERT (which omits it) valid.
 ALTER TABLE habits ADD COLUMN IF NOT EXISTS schedule TEXT;
+-- Habit end date: an optional upper bound to start_date (YYYY-MM-DD). NULL means
+-- ongoing (no end). On/before this day the habit behaves normally; after it the
+-- habit is no longer due/tracked and its stats freeze at the end date. Nullable
+-- + no default keeps migrate.ts's explicit-column INSERT (which omits it) valid,
+-- exactly like the schedule column above.
+ALTER TABLE habits ADD COLUMN IF NOT EXISTS end_date TEXT;
 `;
 
 // Arbitrary constant identifying the schema/migration advisory lock. Any two

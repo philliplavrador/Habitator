@@ -21,6 +21,11 @@ export interface ContributionGridProps {
   today: string;
   /** Days before this render as "before range" (faint). */
   startDate: string;
+  /**
+   * Optional end date (YYYY-MM-DD). Days after it render as "after range"
+   * (classified `'after'`, faint) and never reach `classify`. Null ⇒ ongoing.
+   */
+  endDate?: string | null;
   /** Column-count strategy. */
   columns: ColumnStrategy;
   /**
@@ -64,6 +69,7 @@ function resolveColumns(
 export default function ContributionGrid({
   today,
   startDate,
+  endDate = null,
   columns,
   classify,
   kindClass,
@@ -85,6 +91,7 @@ export default function ContributionGrid({
       let kind: string;
       if (compareISO(date, today) > 0) kind = 'future';
       else if (compareISO(date, startDate) < 0) kind = 'before';
+      else if (endDate !== null && compareISO(date, endDate) > 0) kind = 'after';
       else kind = classify(date);
       cells.push({ date, kind });
     }

@@ -107,11 +107,12 @@ export interface PerfectDays {
 }
 
 /**
- * Days on which every habit active that day (start_date <= day) was "won":
- * a `build` habit must be marked `pass` (a blank or fail disqualifies), and a
- * `quit` habit must simply NOT have a slip that day (blank = clean = fine). Only
- * days with at least one entry can qualify. Uses start_date (not archived) so
- * historical perfect days stand.
+ * Days on which every habit active that day (start_date <= day <= end_date) was
+ * "won": a `build` habit must be marked `pass` (a blank or fail disqualifies),
+ * and a `quit` habit must simply NOT have a slip that day (blank = clean = fine).
+ * Only days with at least one entry can qualify. Uses the start/end window (not
+ * archived) so historical perfect days stand and an ended habit stops being
+ * required after its end date.
  */
 export function perfectDays(
   habits: Habit[],
@@ -130,7 +131,11 @@ export function perfectDays(
   const dates: string[] = [];
   for (const [date, statuses] of byDate) {
     if (compareISO(date, today) > 0) continue;
-    const active = habits.filter((h) => compareISO(h.start_date, date) <= 0);
+    const active = habits.filter(
+      (h) =>
+        compareISO(h.start_date, date) <= 0 &&
+        (h.end_date === null || compareISO(date, h.end_date) <= 0)
+    );
     if (active.length === 0) continue;
     const allWon = active.every((h) =>
       h.kind === 'quit'

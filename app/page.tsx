@@ -39,8 +39,11 @@ export default async function TodayPage({
   const statusMap = await statusMapForDate(userId, selected);
   // Show a habit only on days it's due: daily/weekly every day, weekdays/interval
   // only on their scheduled days (isDueOn also enforces start_date >= selected).
-  const dueHabits = (await listActiveHabits(userId)).filter((h) =>
-    isDueOn(h.schedule, h.start_date, selected)
+  // An ended habit (end_date set) drops off the board after its end date.
+  const dueHabits = (await listActiveHabits(userId)).filter(
+    (h) =>
+      isDueOn(h.schedule, h.start_date, selected) &&
+      (h.end_date === null || compareISO(selected, h.end_date) <= 0)
   );
   const streaks = await getCurrentStreaksBatch(userId, dueHabits, today);
 

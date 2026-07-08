@@ -62,10 +62,11 @@ export async function GET() {
   // pullupSessions, ankiDays. version 7 added *_sessions.videos — the per-set
   // video array. version 8 added habits.kind — 'build' | 'quit'. version 9
   // added habits.schedule — JSON-in-TEXT, NULL means daily. version 10 added the
-  // user-defined rep programs: repPrograms + repProgramSessions.)
+  // user-defined rep programs: repPrograms + repProgramSessions. version 11 added
+  // habits.end_date — optional YYYY-MM-DD upper bound, NULL means ongoing.)
   const payload = {
     app: 'habitator',
-    version: 10,
+    version: 11,
     exportedAt: new Date().toISOString(),
     habits,
     entries,

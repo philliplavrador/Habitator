@@ -234,28 +234,49 @@ export function computeWeeklyStats(
   };
 }
 
-/** Dispatch to the right stats rules for the habit's kind + schedule. */
+/**
+ * Dispatch to the right stats rules for the habit's kind + schedule.
+ *
+ * A habit with an `end_date` is scored only through that day — its stats FREEZE
+ * at the end. We do this uniformly, independent of kind: (1) clamp the effective
+ * "today" the calendar-walking rules use to the end date, so their walks stop
+ * there (the end day itself is treated like a live day — lenient, matching the
+ * "first partial week is skipped" and "today is pending" rules); and (2) window
+ * the recorded entries to on/before the end date, so a stray row after it (e.g.
+ * left over from before the end date was set) never counts. A future end_date is
+ * a no-op (effectiveToday stays today; nothing is after it yet).
+ */
 export function computeHabitStats(
   habit: Habit,
   entries: Entry[],
   today: string
 ): HabitStats {
+  const end = habit.end_date;
+  const effectiveToday = end !== null && compareISO(end, today) < 0 ? end : today;
+  const windowed =
+    end !== null ? entries.filter((e) => compareISO(e.date, end) <= 0) : entries;
+
   if (habit.kind === 'quit') {
-    return computeQuitStats(entries, habit.start_date, today);
+    return computeQuitStats(windowed, habit.start_date, effectiveToday);
   }
   switch (habit.schedule.kind) {
     case 'weekdays':
     case 'interval':
-      return computeScheduledStats(entries, habit.schedule, habit.start_date, today);
+      return computeScheduledStats(
+        windowed,
+        habit.schedule,
+        habit.start_date,
+        effectiveToday
+      );
     case 'weekly':
       return computeWeeklyStats(
-        entries,
+        windowed,
         habit.schedule.count,
         habit.start_date,
-        today
+        effectiveToday
       );
     default:
-      return computeStats(entries);
+      return computeStats(windowed);
   }
 }
 

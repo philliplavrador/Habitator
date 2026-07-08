@@ -12,7 +12,7 @@ import { listEntriesForHabit, listEntriesForHabitSince } from '@/lib/entries';
 import { getHabitStats, formatRate } from '@/lib/stats';
 import { requirePageContext } from '@/lib/pageContext';
 import { rollingCompletionSeries, dayOfWeekBreakdown } from '@/lib/analytics';
-import { formatHuman } from '@/lib/dates';
+import { compareISO, formatHuman } from '@/lib/dates';
 import { describeSchedule } from '@/lib/schedule';
 import type { EntryStatus } from '@/lib/types';
 
@@ -49,6 +49,10 @@ export default async function HabitDetailPage({
         ? 'Misses'
         : 'Fails';
 
+  // Has the habit reached its end date? (A future end date is not yet "ended".)
+  const ended =
+    habit.end_date !== null && compareISO(habit.end_date, today) < 0;
+
   const stats = await getHabitStats(userId, habit.id, today);
 
   const statusByDate: Record<string, EntryStatus> = {};
@@ -56,8 +60,12 @@ export default async function HabitDetailPage({
     statusByDate[e.date] = e.status;
   }
 
-  // Analytics over recorded days on/after the start date.
-  const since = await listEntriesForHabitSince(userId, habit.id, habit.start_date);
+  // Analytics over recorded days within the habit's window (on/after start, and
+  // on/before the end date when it has one).
+  const sinceAll = await listEntriesForHabitSince(userId, habit.id, habit.start_date);
+  const since = habit.end_date
+    ? sinceAll.filter((e) => compareISO(e.date, habit.end_date!) <= 0)
+    : sinceAll;
   const trend = rollingCompletionSeries(since, 14).map((p) => ({
     label: p.date.slice(5),
     rate: p.rate,
@@ -77,6 +85,10 @@ export default async function HabitDetailPage({
           habit.archived === 1 ? (
             <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-text-muted">
               Archived
+            </span>
+          ) : ended ? (
+            <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-text-muted">
+              Ended
             </span>
           ) : (
             <></>
@@ -114,6 +126,9 @@ export default async function HabitDetailPage({
           <>{describeSchedule(habit.schedule)} · </>
         )}
         Tracking since {formatHuman(habit.start_date)}
+        {habit.end_date && (
+          <> · {ended ? 'ended' : 'until'} {formatHuman(habit.end_date)}</>
+        )}
       </p>
 
       <section className="mb-3 grid grid-cols-3 gap-2">
@@ -138,6 +153,7 @@ export default async function HabitDetailPage({
         <Heatmap
           statusByDate={statusByDate}
           startDate={habit.start_date}
+          endDate={habit.end_date}
           today={today}
           kind={habit.kind}
           schedule={habit.schedule}
@@ -153,6 +169,7 @@ export default async function HabitDetailPage({
             habitId={habit.id}
             initialStatus={statusByDate}
             startDate={habit.start_date}
+            endDate={habit.end_date}
             today={today}
             kind={habit.kind}
             schedule={habit.schedule}

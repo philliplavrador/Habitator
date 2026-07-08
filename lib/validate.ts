@@ -1,4 +1,5 @@
 import {
+  compareISO,
   hoursBetween,
   isValidISODate,
   isValidTimestamp,
@@ -56,6 +57,8 @@ function coerceInt(v: unknown, min: number, max: number): number | null {
  * - kind defaults to 'build'; only 'build' | 'quit' are accepted
  * - schedule defaults to daily; validated/normalized by lib/schedule.ts
  * - start_date defaults to today (in the owner's `tz`); must be a valid YYYY-MM-DD
+ * - end_date is optional (blank/missing ⇒ null, i.e. ongoing); when present it
+ *   must be a valid YYYY-MM-DD on or after start_date
  */
 export function parseHabitInput(body: unknown, tz: string): ParseResult<HabitInput> {
   const b = asObject(body);
@@ -83,9 +86,30 @@ export function parseHabitInput(body: unknown, tz: string): ParseResult<HabitInp
     return { ok: false, error: 'start_date must be a valid YYYY-MM-DD date.' };
   }
 
+  // end_date is optional: blank/missing ⇒ null (ongoing). When present it must be
+  // a valid date on or after start_date.
+  const rawEnd = asString(b.end_date).trim();
+  const end_date = rawEnd === '' ? null : rawEnd;
+  if (end_date !== null) {
+    if (!isValidISODate(end_date)) {
+      return { ok: false, error: 'end_date must be a valid YYYY-MM-DD date.' };
+    }
+    if (compareISO(end_date, start_date) < 0) {
+      return { ok: false, error: 'end_date cannot be before the start date.' };
+    }
+  }
+
   return {
     ok: true,
-    value: { name, details, exceptions, kind, schedule: sched.value, start_date },
+    value: {
+      name,
+      details,
+      exceptions,
+      kind,
+      schedule: sched.value,
+      start_date,
+      end_date,
+    },
   };
 }
 

@@ -58,6 +58,14 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  // Likewise, entries after the habit's end date fall outside its tracked
+  // window (stats freeze at end_date), so reject them.
+  if (habit.end_date !== null && compareISO(date, habit.end_date) > 0) {
+    return NextResponse.json(
+      { error: 'Date is after the habit end date.' },
+      { status: 400 }
+    );
+  }
 
   const entry = await setEntry(userId, habitId, date, status);
   return NextResponse.json({ entry });

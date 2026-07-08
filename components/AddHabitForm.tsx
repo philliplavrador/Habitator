@@ -59,6 +59,8 @@ export default function AddHabitForm({ habit, tz, initialKind }: Props) {
   // (after mount) so SSR doesn't bake in the server's timezone day and cause a
   // hydration mismatch. An empty submit is still safe — the API defaults it.
   const [startDate, setStartDate] = useState(habit?.start_date ?? '');
+  // Optional end date. Blank ⇒ ongoing (no end). Editable after creation too.
+  const [endDate, setEndDate] = useState(habit?.end_date ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,6 +100,12 @@ export default function AddHabitForm({ habit, tz, initialKind }: Props) {
       setError('Pick at least one day of the week.');
       return;
     }
+    // ISO YYYY-MM-DD strings compare lexicographically, so a plain `<` is a
+    // valid date comparison here.
+    if (endDate !== '' && startDate !== '' && endDate < startDate) {
+      setError('End date cannot be before the start date.');
+      return;
+    }
     setBusy(true);
     setError(null);
     const input = {
@@ -107,6 +115,7 @@ export default function AddHabitForm({ habit, tz, initialKind }: Props) {
       kind,
       schedule,
       start_date: startDate,
+      end_date: endDate === '' ? null : endDate,
     };
     try {
       if (habit) await apiUpdateHabit(habit.id, input);
@@ -301,6 +310,15 @@ export default function AddHabitForm({ habit, tz, initialKind }: Props) {
         value={startDate}
         onChange={(e) => setStartDate(e.target.value)}
         hint="Stats only count days on or after this date."
+      />
+
+      <Field
+        label="End date"
+        type="date"
+        value={endDate}
+        min={startDate || undefined}
+        onChange={(e) => setEndDate(e.target.value)}
+        hint="Optional — stops tracking after this day. Leave blank if ongoing."
       />
 
       {error && <p className="text-sm text-fail">{error}</p>}
