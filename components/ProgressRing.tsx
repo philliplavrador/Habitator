@@ -1,6 +1,6 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useId } from 'react';
 
 interface Props {
@@ -70,7 +70,7 @@ export default function ProgressRing({
         />
 
         {/* Progress arc */}
-        <motion.circle
+        <m.circle
           cx={center}
           cy={center}
           r={radius}

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import type { ReactNode } from 'react';
 
 /**
@@ -46,7 +46,7 @@ export default function BottomNav() {
                   className="relative flex flex-col items-center gap-0.5 rounded-btn px-2 py-1.5"
                 >
                   {active && (
-                    <motion.span
+                    <m.span
                       layoutId="navpill"
                       transition={{ type: 'spring', stiffness: 500, damping: 40 }}
                       className="absolute inset-x-1 inset-y-0 -z-0 rounded-btn bg-accent/12"

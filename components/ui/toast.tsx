@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m } from 'framer-motion';
 import type { ReactNode } from 'react';
 
 type Tone = 'success' | 'error' | 'info';
@@ -59,7 +59,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div className="safe-top pointer-events-none fixed inset-x-0 top-0 z-[60] mx-auto flex w-full max-w-md flex-col items-center gap-2 px-4 pt-2">
         <AnimatePresence>
           {items.map((t) => (
-            <motion.div
+            <m.div
               key={t.id}
               layout
               initial={{ opacity: 0, y: -16, scale: 0.96 }}
@@ -85,7 +85,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   )}
                 </div>
               </div>
-            </motion.div>
+            </m.div>
           ))}
         </AnimatePresence>
       </div>

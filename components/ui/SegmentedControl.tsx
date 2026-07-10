@@ -1,6 +1,6 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { useId } from 'react';
 import type { ReactNode } from 'react';
 
@@ -55,7 +55,7 @@ export default function SegmentedControl<T extends string>({
             }`}
           >
             {active && (
-              <motion.span
+              <m.span
                 layoutId={`seg-${groupId}`}
                 transition={{ type: 'spring', stiffness: 500, damping: 40 }}
                 className="absolute inset-0 -z-0 rounded-btn bg-accent"

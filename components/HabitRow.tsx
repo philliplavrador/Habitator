@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import { describeSchedule } from '@/lib/schedule';
 import type { EntryStatus, HabitDayView } from '@/lib/types';
 
@@ -64,7 +64,7 @@ export default function HabitRow({ view, busy, onSetStatus }: Props) {
 
     return (
       <RowShell href={href} name={habit.name} sub={sub}>
-        <motion.button
+        <m.button
           type="button"
           aria-label={slipped ? 'Undo slip' : 'Mark a slip'}
           aria-pressed={slipped}
@@ -80,7 +80,7 @@ export default function HabitRow({ view, busy, onSetStatus }: Props) {
           ].join(' ')}
         >
           {slipped ? 'Undo' : 'I slipped'}
-        </motion.button>
+        </m.button>
       </RowShell>
     );
   }
@@ -111,7 +111,7 @@ export default function HabitRow({ view, busy, onSetStatus }: Props) {
 
   return (
     <RowShell href={href} name={habit.name} sub={sub}>
-      <motion.button
+      <m.button
         type="button"
         aria-label="Mark pass"
         aria-pressed={status === 'pass'}
@@ -127,8 +127,8 @@ export default function HabitRow({ view, busy, onSetStatus }: Props) {
         ].join(' ')}
       >
         ✓
-      </motion.button>
-      <motion.button
+      </m.button>
+      <m.button
         type="button"
         aria-label="Mark fail"
         aria-pressed={status === 'fail'}
@@ -144,7 +144,7 @@ export default function HabitRow({ view, busy, onSetStatus }: Props) {
         ].join(' ')}
       >
         ✗
-      </motion.button>
+      </m.button>
     </RowShell>
   );
 }

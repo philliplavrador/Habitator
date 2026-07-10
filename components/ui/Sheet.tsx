@@ -1,6 +1,6 @@
 'use client';
 
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m } from 'framer-motion';
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 
@@ -37,7 +37,7 @@ export default function Sheet({ open, onClose, title, children, footer }: Props)
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           className="fixed inset-0 z-50 flex items-end justify-center"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -49,7 +49,7 @@ export default function Sheet({ open, onClose, title, children, footer }: Props)
             onClick={onClose}
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
           />
-          <motion.div
+          <m.div
             role="dialog"
             aria-modal="true"
             initial={{ y: '100%' }}
@@ -66,8 +66,8 @@ export default function Sheet({ open, onClose, title, children, footer }: Props)
             )}
             {children}
             {footer && <div className="mt-4">{footer}</div>}
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   );
