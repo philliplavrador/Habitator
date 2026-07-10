@@ -92,13 +92,17 @@ export async function setEntry(
   date: string,
   status: EntryStatus
 ): Promise<Entry> {
-  await run(
+  // Single round-trip: the upsert RETURNs the resulting row (no follow-up
+  // SELECT). Conflict target stays (habit_id, date) — global per habit/day, not
+  // user-scoped — and created_at is only set on the initial insert (the DO
+  // UPDATE touches status alone, preserving the original created_at).
+  return (await one<Entry>(
     `INSERT INTO entries (user_id, habit_id, date, status, created_at)
      VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (habit_id, date) DO UPDATE SET status = EXCLUDED.status`,
+     ON CONFLICT (habit_id, date) DO UPDATE SET status = EXCLUDED.status
+     RETURNING *`,
     [userId, habitId, date, status, new Date().toISOString()]
-  );
-  return (await getEntry(userId, habitId, date))!;
+  ))!;
 }
 
 /** Clear a (habit, date) back to blank. Returns true if a row was removed. */

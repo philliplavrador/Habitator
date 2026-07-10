@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m } from 'framer-motion';
 import HabitRow from './HabitRow';
 import ProgressRing from './ProgressRing';
 import CountUp from './ui/CountUp';
@@ -51,7 +50,7 @@ const rowTransition = {
 
 /**
  * One habit row, wrapped so it can animate between the active and completed
- * zones. The wrapper is a roleless `motion.div` (not `motion.li`) because
+ * zones. The wrapper is a roleless `m.div` (not `motion.li`) because
  * HabitRow already renders the `<li>` — a `<li>` wrapper would nest `<li>` in
  * `<li>` and warn. Completed rows recede to 0.7 opacity via `animate` (not a
  * className) so the whole row, ✓ included, dims without touching its hit area.
@@ -69,7 +68,7 @@ function MotionRow({
 }) {
   const rest = zone === 'completed' ? 0.7 : 1;
   return (
-    <motion.div
+    <m.div
       layout="position"
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: rest, scale: 1 }}
@@ -77,12 +76,11 @@ function MotionRow({
       transition={rowTransition}
     >
       <HabitRow view={view} busy={busy} onSetStatus={onSetStatus} />
-    </motion.div>
+    </m.div>
   );
 }
 
 export default function TodayClient({ date, initialItems, widgets }: Props) {
-  const router = useRouter();
   const { perfectDay, milestone } = useCelebration();
   const { show } = useToast();
   const [items, setItems] = useState<HabitDayView[]>(initialItems);
@@ -92,12 +90,13 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   // the active list stays uncluttered once the day's work is checked off.
   const [showCompleted, setShowCompleted] = useState(false);
 
-  // Habit ids with an in-flight write. A fresh server snapshot (from another
-  // habit's router.refresh()) must not clobber a habit we just optimistically
-  // changed but whose own write hasn't landed yet — otherwise rapid taps flicker.
+  // Habit ids with an in-flight write. A fresh server snapshot (a genuine
+  // server refresh, e.g. date navigation) must not clobber a habit we just
+  // optimistically changed but whose own write hasn't landed yet — otherwise
+  // rapid taps flicker.
   const pending = useRef<Set<number>>(new Set());
 
-  // Re-sync when the server sends fresh data (date change or router.refresh),
+  // Re-sync when the server sends fresh data (date change or full load),
   // but preserve the optimistic status of any habit with a write still in flight.
   useEffect(() => {
     setItems((prev) =>
@@ -160,8 +159,14 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   }, [allDone, total, perfectDay, show]);
 
   // ── Streak-milestone celebration ──
-  // Streaks are server-computed, so watch the fresh server snapshot for a habit
-  // crossing 7/30/100. Skip the first sync so existing streaks don't fire on load.
+  // Streaks are server-computed. Since the check-off path no longer calls
+  // router.refresh(), a genuine crossing fires from the merge in handleSet (see
+  // `fireStreakMilestone`), NOT from this effect. This effect only handles the
+  // OTHER sources of a fresh streak: the initial load (seed `seenStreaks`
+  // without firing, so pre-existing streaks never celebrate on load) and genuine
+  // server refreshes such as date navigation (reconcile `seenStreaks` so a
+  // value already merged optimistically can't re-fire). `seenStreaks` is the
+  // shared record of the last-known streak per habit, kept in sync by both paths.
   const seenStreaks = useRef<Map<number, number>>(new Map());
   const streaksInit = useRef(false);
   useEffect(() => {
@@ -185,6 +190,21 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
     streaksInit.current = true;
   }, [initialItems, milestone, show]);
 
+  // Fire the milestone celebration for a habit whose freshly-merged streak
+  // crossed 7/30/100 upward — the merge-path equivalent of the effect above.
+  // Records the new streak in `seenStreaks` so a later genuine refresh (which
+  // will report the same streak) can't double-fire it.
+  function fireStreakMilestone(habitId: number, name: string, freshStreak: number) {
+    const prev = seenStreaks.current.get(habitId) ?? freshStreak;
+    seenStreaks.current.set(habitId, freshStreak);
+    if (freshStreak <= prev) return;
+    const crossed = MILESTONES.filter((m) => freshStreak >= m && prev < m);
+    if (!crossed.length) return;
+    const m = Math.max(...crossed);
+    milestone(m);
+    show({ tone: 'success', title: `🔥 ${m}-day streak!`, description: name });
+  }
+
   async function handleSet(habitId: number, next: EntryStatus | null) {
     // Same-habit concurrency guard. A row leaving the active zone stays in the
     // DOM as an AnimatePresence exiting child with its pre-tap props frozen — so
@@ -192,8 +212,9 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
     // flight. Guard at the source so a stray tap on that ghost can't start a
     // second, racing write. (Previously the row re-rendered in place as busy.)
     if (pending.current.has(habitId)) return;
-    const prevStatus =
-      items.find((i) => i.habit.id === habitId)?.status ?? null;
+    const target = items.find((i) => i.habit.id === habitId);
+    const prevStatus = target?.status ?? null;
+    const habitName = target?.habit.name ?? '';
     pending.current.add(habitId);
     // Optimistic update.
     setItems((cur) =>
@@ -202,10 +223,25 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
     setBusyId(habitId);
     setError(null);
     try {
-      if (next === null) await apiClearEntry(habitId, date);
-      else await apiSetEntry(habitId, date, next);
-      // Pull fresh streaks/counts from the server.
-      router.refresh();
+      // Merge the habit's fresh streak/weekly from the mutation response instead
+      // of a full-page router.refresh() (one network request, no RSC refetch).
+      const result =
+        next === null
+          ? await apiClearEntry(habitId, date)
+          : await apiSetEntry(habitId, date, next);
+      // currentStreak is absent only when a clear hit a since-deleted habit —
+      // nothing fresh to merge, so leave the optimistic state as-is.
+      if (result.currentStreak !== undefined) {
+        const freshStreak = result.currentStreak;
+        setItems((cur) =>
+          cur.map((i) =>
+            i.habit.id === habitId
+              ? { ...i, currentStreak: freshStreak, weekly: result.weekly }
+              : i
+          )
+        );
+        fireStreakMilestone(habitId, habitName, freshStreak);
+      }
     } catch (e) {
       // Revert just this habit, leaving other in-flight changes intact.
       setItems((cur) =>
@@ -264,7 +300,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                   Kept mounted while any build habit exists (never gated on its
                   own length) so completing the LAST active one still plays its
                   exit. */}
-              <motion.div
+              <m.div
                 role="list"
                 aria-label={activeItems.length > 0 ? 'Habits to do' : undefined}
                 className="flex flex-col gap-2"
@@ -281,7 +317,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                     />
                   ))}
                 </AnimatePresence>
-              </motion.div>
+              </m.div>
 
               {activeItems.length === 0 && (
                 <p className="px-1 pt-1 text-sm text-text-muted">
@@ -295,11 +331,11 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
               stay above the avoiding/completed sections. Completed ones move to
               the "Completed" section below, like any finished habit. */}
           {activeWidgets.length > 0 && (
-            <motion.div layout="position" className="mt-2">
+            <m.div layout="position" className="mt-2">
               {activeWidgets.map((w) => (
                 <div key={w.key}>{w.node}</div>
               ))}
-            </motion.div>
+            </m.div>
           )}
 
           {/* ── Quit ("avoiding") habits: their own section, out of the ring.
@@ -315,7 +351,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                 </span>
                 <span aria-hidden className="h-px flex-1 bg-border" />
               </header>
-              <motion.div
+              <m.div
                 role="list"
                 aria-label="Habits to avoid"
                 className="flex flex-col gap-2"
@@ -332,7 +368,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                     />
                   ))}
                 </AnimatePresence>
-              </motion.div>
+              </m.div>
             </section>
           )}
 
@@ -341,7 +377,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
               out of the way until you deliberately ask to see them. */}
           {completedTotal > 0 && (
             <div className="mt-8">
-              <motion.button
+              <m.button
                 type="button"
                 layout="position"
                 onClick={() => setShowCompleted((v) => !v)}
@@ -364,11 +400,11 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                 >
                   <path d="M6 9l6 6 6-6" />
                 </svg>
-              </motion.button>
+              </m.button>
 
               <AnimatePresence initial={false}>
                 {showCompleted && (
-                  <motion.section
+                  <m.section
                     key="completed"
                     layout="position"
                     initial={{ opacity: 0, height: 0 }}
@@ -378,7 +414,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                     className="mt-3 overflow-hidden"
                   >
                     {completedItems.length > 0 && (
-                      <motion.div
+                      <m.div
                         role="list"
                         aria-label="Completed habits"
                         className="flex flex-col gap-2"
@@ -395,7 +431,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                             />
                           ))}
                         </AnimatePresence>
-                      </motion.div>
+                      </m.div>
                     )}
 
                     {/* Completed custom-habit widgets — dimmed like completed
@@ -413,7 +449,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                         ))}
                       </div>
                     )}
-                  </motion.section>
+                  </m.section>
                 )}
               </AnimatePresence>
             </div>

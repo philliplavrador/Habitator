@@ -79,19 +79,37 @@ async function putVideo(url: string, file: File): Promise<RepProgramState> {
   return unwrap<RepProgramState>(res, 'state');
 }
 
+/**
+ * The affected habit's fresh state returned by an entry mutation, so the caller
+ * can merge it into local state instead of triggering a full page refresh.
+ * `currentStreak`/`weekly` may be absent from a clear when the habit wasn't
+ * found server-side (deleted mid-flight) — the caller no-ops in that case.
+ */
+export interface EntryMutationResult {
+  currentStreak?: number;
+  weekly?: { done: number; target: number };
+}
+
 export async function apiSetEntry(
   habitId: number,
   date: string,
   status: EntryStatus
-): Promise<void> {
-  await request('/api/entries', 'POST', { habitId, date, status });
+): Promise<EntryMutationResult> {
+  const res = await request('/api/entries', 'POST', { habitId, date, status });
+  const data = await res.json();
+  return { currentStreak: data.currentStreak, weekly: data.weekly };
 }
 
-export async function apiClearEntry(habitId: number, date: string): Promise<void> {
-  await request(
+export async function apiClearEntry(
+  habitId: number,
+  date: string
+): Promise<EntryMutationResult> {
+  const res = await request(
     `/api/entries?habitId=${habitId}&date=${encodeURIComponent(date)}`,
     'DELETE'
   );
+  const data = await res.json();
+  return { currentStreak: data.currentStreak, weekly: data.weekly };
 }
 
 export async function apiCreateHabit(input: HabitInput): Promise<Habit> {
