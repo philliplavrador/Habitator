@@ -148,10 +148,32 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     userId: number,
     tz: string
   ): Promise<RepProgramState> {
-    const doneRow = await one<{ c: number }>(
-      `SELECT COUNT(*)::int AS c FROM ${t} WHERE user_id = $1 AND completed = 1${progFilter}`,
-      [userId]
-    );
+    const today = todayISO(tz);
+
+    // These four reads are independent (none feeds another's query), so run them
+    // in one wave. `done` is still COUNT(completed = 1); `latest`/`todayDone` are
+    // the same LIMIT-1 lookups; `dateRows` is the same DISTINCT-date scan — only
+    // the dispatch order changed, so every derived value below is unchanged.
+    const [doneRow, latest, todayDone, dateRows] = await Promise.all([
+      one<{ c: number }>(
+        `SELECT COUNT(*)::int AS c FROM ${t} WHERE user_id = $1 AND completed = 1${progFilter}`,
+        [userId]
+      ),
+      one(
+        `SELECT * FROM ${t} WHERE user_id = $1${progFilter} ORDER BY id DESC LIMIT 1`,
+        [userId]
+      ),
+      one(
+        `SELECT * FROM ${t} WHERE user_id = $1 AND completed = 1 AND date = $2${progFilter}
+         ORDER BY id DESC LIMIT 1`,
+        [userId, today]
+      ),
+      many<{ date: string }>(
+        `SELECT DISTINCT date FROM ${t} WHERE user_id = $1${progFilter} ORDER BY date ASC`,
+        [userId]
+      ),
+    ]);
+
     const done = doneRow?.c ?? 0;
     const programComplete = done >= config.programDays;
     const currentDay = Math.min(done + 1, config.programDays);
@@ -161,23 +183,8 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     // the raw count still drives progression (so a delete correctly rolls back).
     const displayDone = Math.min(done, config.programDays);
     const daysLeft = Math.max(0, config.programDays - done);
-    const today = todayISO(tz);
 
-    const latest = await one(
-      `SELECT * FROM ${t} WHERE user_id = $1${progFilter} ORDER BY id DESC LIMIT 1`,
-      [userId]
-    );
-    const todayDone = await one(
-      `SELECT * FROM ${t} WHERE user_id = $1 AND completed = 1 AND date = $2${progFilter}
-       ORDER BY id DESC LIMIT 1`,
-      [userId, today]
-    );
-    const dates = (
-      await many<{ date: string }>(
-        `SELECT DISTINCT date FROM ${t} WHERE user_id = $1${progFilter} ORDER BY date ASC`,
-        [userId]
-      )
-    ).map((r) => r.date);
+    const dates = dateRows.map((r) => r.date);
     const streak = attemptStreak(dates, today);
 
     return {

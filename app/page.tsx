@@ -37,30 +37,56 @@ export default async function TodayPage({
     selected = today;
   }
 
-  const statusMap = await statusMapForDate(userId, selected);
+  // The rep programs are "today" actions (they advance by completed session,
+  // not calendar date), so only surface their cards on the current day.
+  const isToday = selected === today;
+
+  // Wave 1 — reads that don't depend on the habit list. `statusMap` and the
+  // active-habit list come back together; the two "today-only" reads
+  // (user_domains, user rep-program states) are gated to the current day.
+  const [statusMap, allHabits, domainsList, userRepStates] = await Promise.all([
+    statusMapForDate(userId, selected),
+    listActiveHabits(userId),
+    // Pushups/pullups/japanese are opt-in custom habits — nothing is created
+    // with the account, so a widget exists only for a domain this user added.
+    isToday ? listUserDomains(userId) : Promise.resolve([]),
+    // User-defined rep programs (the configurable "template instances") surface
+    // the same summary widget as the two built-ins, inline in the habit list.
+    isToday ? listRepProgramStates(userId, tz) : Promise.resolve([]),
+  ]);
+
   // Show a habit only on days it's due: daily/weekly every day, weekdays/interval
   // only on their scheduled days (isDueOn also enforces start_date >= selected).
   // An ended habit (end_date set) drops off the board after its end date.
-  const dueHabits = (await listActiveHabits(userId)).filter(
+  const dueHabits = allHabits.filter(
     (h) =>
       isDueOn(h.schedule, h.start_date, selected) &&
       (h.end_date === null || compareISO(selected, h.end_date) <= 0)
   );
-  const streaks = await getCurrentStreaksBatch(userId, dueHabits, today);
+  const domains = new Set(domainsList.map((d) => d.domain));
+  // Weekly-count habits show this week's progress ("2 / 3 this week"); the extra
+  // range read only fires when at least one weekly habit is due.
+  const needWeekly = dueHabits.some((h) => h.schedule.kind === 'weekly');
 
-  // Weekly-count habits show this week's progress ("2 / 3 this week") for the
-  // week containing the selected day. One extra range query, only if any exist.
+  // Wave 2 — reads that depend on `dueHabits` / `domains`. The streak batch
+  // needs the due-habit list; the built-in domain states are gated to added
+  // domains, exactly as before.
+  const [streaks, weekEntries, pushupState, pullupState, ankiState] =
+    await Promise.all([
+      getCurrentStreaksBatch(userId, dueHabits, today),
+      needWeekly
+        ? listEntriesForDateRange(userId, weekStartOf(selected), selected)
+        : Promise.resolve([]),
+      domains.has('pushups') ? getPushupState(userId, tz) : Promise.resolve(null),
+      domains.has('pullups') ? getPullupState(userId, tz) : Promise.resolve(null),
+      domains.has('japanese') ? getAnkiState(userId, tz) : Promise.resolve(null),
+    ]);
+
+  // Weekly-count progress for the week containing the selected day.
   const weeklyDone = new Map<number, number>();
-  if (dueHabits.some((h) => h.schedule.kind === 'weekly')) {
-    const weekEntries = await listEntriesForDateRange(
-      userId,
-      weekStartOf(selected),
-      selected
-    );
-    for (const e of weekEntries) {
-      if (e.status === 'pass') {
-        weeklyDone.set(e.habit_id, (weeklyDone.get(e.habit_id) ?? 0) + 1);
-      }
+  for (const e of weekEntries) {
+    if (e.status === 'pass') {
+      weeklyDone.set(e.habit_id, (weeklyDone.get(e.habit_id) ?? 0) + 1);
     }
   }
 
@@ -76,25 +102,6 @@ export default async function TodayPage({
 
   const prevDate = addDays(selected, -1);
   const nextDate = compareISO(selected, today) < 0 ? addDays(selected, 1) : null;
-
-  // The rep programs are "today" actions (they advance by completed session,
-  // not calendar date), so only surface their cards on the current day.
-  const isToday = selected === today;
-  // Pushups/pullups/japanese are opt-in custom habits — nothing is created with
-  // the account, so a widget exists only for a domain this user actually added.
-  const domains = new Set(
-    isToday ? (await listUserDomains(userId)).map((d) => d.domain) : []
-  );
-  const pushupState = domains.has('pushups')
-    ? await getPushupState(userId, tz)
-    : null;
-  const pullupState = domains.has('pullups')
-    ? await getPullupState(userId, tz)
-    : null;
-  // User-defined rep programs (the configurable "template instances") surface the
-  // same summary widget as the two built-ins, inline in the habit list.
-  const userRepStates = isToday ? await listRepProgramStates(userId, tz) : [];
-  const ankiState = domains.has('japanese') ? await getAnkiState(userId, tz) : null;
 
   // Pushups/pullups/japanese/custom rep programs are custom habits, not separate
   // destinations, so their summary widgets flow inline with the habit list

@@ -8,8 +8,8 @@ import LineTrend from '@/components/charts/LineTrend';
 import BarBreakdown from '@/components/charts/BarBreakdown';
 import { chart, weekdayColor } from '@/components/charts/theme';
 import { loadHabitOr404 } from '@/lib/habitPage';
-import { listEntriesForHabit, listEntriesForHabitSince } from '@/lib/entries';
-import { getHabitStats, formatRate } from '@/lib/stats';
+import { listEntriesForHabit } from '@/lib/entries';
+import { computeHabitStats, formatRate } from '@/lib/stats';
 import { requirePageContext } from '@/lib/pageContext';
 import { rollingCompletionSeries, dayOfWeekBreakdown } from '@/lib/analytics';
 import { compareISO, formatHuman } from '@/lib/dates';
@@ -53,16 +53,28 @@ export default async function HabitDetailPage({
   const ended =
     habit.end_date !== null && compareISO(habit.end_date, today) < 0;
 
-  const stats = await getHabitStats(userId, habit.id, today);
+  // One all-time entries read feeds the heatmap AND (by in-memory filtering)
+  // the stats and analytics — the habit and entries each used to be fetched
+  // multiple times. Rows come back date-ascending.
+  const allEntries = await listEntriesForHabit(userId, habit.id);
 
   const statusByDate: Record<string, EntryStatus> = {};
-  for (const e of await listEntriesForHabit(userId, habit.id)) {
+  for (const e of allEntries) {
     statusByDate[e.date] = e.status;
   }
 
+  // Entries on/after start_date — identical to listEntriesForHabitSince (same
+  // date >= start filter, same ascending order, since allEntries is date-ASC).
+  const sinceAll = allEntries.filter(
+    (e) => compareISO(e.date, habit.start_date) >= 0
+  );
+  // Stats: computeHabitStats over the since-start entries reproduces exactly what
+  // getHabitStats did (it loaded the same date >= start_date set, then called the
+  // same computeHabitStats, which itself applies the end_date window internally).
+  const stats = computeHabitStats(habit, sinceAll, today);
+
   // Analytics over recorded days within the habit's window (on/after start, and
   // on/before the end date when it has one).
-  const sinceAll = await listEntriesForHabitSince(userId, habit.id, habit.start_date);
   const since = habit.end_date
     ? sinceAll.filter((e) => compareISO(e.date, habit.end_date!) <= 0)
     : sinceAll;

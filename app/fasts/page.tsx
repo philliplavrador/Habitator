@@ -5,7 +5,7 @@ import StatTile from '@/components/ui/StatTile';
 import ChartCard from '@/components/charts/ChartCard';
 import BarBreakdown from '@/components/charts/BarBreakdown';
 import { chart } from '@/components/charts/theme';
-import { getActiveFast, listFasts } from '@/lib/fasts';
+import { listFasts } from '@/lib/fasts';
 import { requirePageContext } from '@/lib/pageContext';
 import { computeFastStats } from '@/lib/fastStats';
 import {
@@ -20,8 +20,12 @@ export const dynamic = 'force-dynamic';
 
 export default async function FastsPage() {
   const { userId, tz, today } = await requirePageContext();
-  const active = (await getActiveFast(userId)) ?? null;
   const fasts = await listFasts(userId);
+  // listFasts orders the (at most one, per the uniq_fast_active index) in-progress
+  // fast first — `ORDER BY (end_at IS NULL) DESC, …` — so the active fast, if any,
+  // is fasts[0]. This is exactly getActiveFast's result (WHERE end_at IS NULL
+  // LIMIT 1), derived without the extra round-trip.
+  const active = fasts[0] && fasts[0].end_at === null ? fasts[0] : null;
   const stats = computeFastStats(fasts);
 
   const durations = fastDurationSeries(fasts, tz).map((d) => ({

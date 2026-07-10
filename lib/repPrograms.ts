@@ -145,9 +145,9 @@ export async function listRepProgramStates(
   tz: string
 ): Promise<RepProgramState[]> {
   const rows = await listRepPrograms(userId);
-  const states: RepProgramState[] = [];
-  for (const row of rows) {
-    states.push(await programFromRow(row).getState(userId, tz));
-  }
-  return states;
+  // Each program's getState is independent, so fan them out concurrently instead
+  // of awaiting them one-by-one. Promise.all preserves input order, so the
+  // returned array is identical to the previous serial loop's — same rows, same
+  // per-row getState result, same order.
+  return Promise.all(rows.map((row) => programFromRow(row).getState(userId, tz)));
 }

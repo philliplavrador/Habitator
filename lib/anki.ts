@@ -113,23 +113,37 @@ function resolveStartDate(addedAt: string | undefined, daysAsc: AnkiDay[]): stri
   return candidates.reduce((a, b) => (compareISO(a, b) <= 0 ? a : b));
 }
 
+/**
+ * Load every day for the user (ascending) and compute the full tracker state,
+ * returning BOTH so a caller that also needs the day list reads `anki_days`
+ * ONCE. The two reads (the day log and the domain row that dates the pace clock)
+ * are independent, so they run in one wave; the derived state is unchanged.
+ */
+export async function getAnkiStateWithDays(
+  userId: number,
+  tz: string
+): Promise<{ state: AnkiState; daysAsc: AnkiDay[] }> {
+  const [dayRows, added] = await Promise.all([
+    many(`SELECT * FROM anki_days WHERE user_id = $1 ORDER BY date ASC`, [
+      userId,
+    ]),
+    getUserDomain(userId, 'japanese'),
+  ]);
+  const daysAsc = dayRows.map(hydrate);
+  const state = computeAnkiState(
+    daysAsc,
+    todayISO(tz),
+    resolveStartDate(added?.created_at, daysAsc)
+  );
+  return { state, daysAsc };
+}
+
 /** Load every day for the user and compute the full tracker state. */
 export async function getAnkiState(
   userId: number,
   tz: string
 ): Promise<AnkiState> {
-  const daysAsc = (
-    await many(
-      `SELECT * FROM anki_days WHERE user_id = $1 ORDER BY date ASC`,
-      [userId]
-    )
-  ).map(hydrate);
-  const added = await getUserDomain(userId, 'japanese');
-  return computeAnkiState(
-    daysAsc,
-    todayISO(tz),
-    resolveStartDate(added?.created_at, daysAsc)
-  );
+  return (await getAnkiStateWithDays(userId, tz)).state;
 }
 
 /**

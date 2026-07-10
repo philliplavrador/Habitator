@@ -7,7 +7,7 @@ import StatTile from '@/components/ui/StatTile';
 import ChartCard from '@/components/charts/ChartCard';
 import LineTrend from '@/components/charts/LineTrend';
 import { chart } from '@/components/charts/theme';
-import { getAnkiState, listAnkiDays } from '@/lib/anki';
+import { getAnkiStateWithDays } from '@/lib/anki';
 import { hasUserDomain } from '@/lib/domains';
 import { requirePageContext } from '@/lib/pageContext';
 import { ankiCumulativeSeries } from '@/lib/analytics';
@@ -22,8 +22,11 @@ export default async function JapanesePage() {
   // An opt-in custom habit: no habit (never added, or deleted), no screen.
   if (!(await hasUserDomain(userId, 'japanese'))) redirect('/');
 
-  const state = await getAnkiState(userId, tz);
-  const days = await listAnkiDays(userId);
+  // One ascending read of anki_days feeds both the computed state and the
+  // history view. `days` is that list reversed to newest-first — identical to
+  // listAnkiDays' `ORDER BY date DESC`, since anki_days holds one row per date.
+  const { state, daysAsc } = await getAnkiStateWithDays(userId, tz);
+  const days = [...daysAsc].reverse();
   const series = ankiCumulativeSeries(
     days,
     state.startDate,

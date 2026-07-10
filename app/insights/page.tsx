@@ -5,8 +5,8 @@ import ChartCard from '@/components/charts/ChartCard';
 import LineTrend from '@/components/charts/LineTrend';
 import BarBreakdown from '@/components/charts/BarBreakdown';
 import { chart, weekdayColor } from '@/components/charts/theme';
-import { listActiveHabits, listAllHabits } from '@/lib/habits';
-import { getHabitStatsBatch, formatRate } from '@/lib/stats';
+import { listAllHabits } from '@/lib/habits';
+import { computeHabitStats, formatRate } from '@/lib/stats';
 import { listAllEntries } from '@/lib/entries';
 import { listFasts } from '@/lib/fasts';
 import { requirePageContext } from '@/lib/pageContext';
@@ -23,8 +23,43 @@ export const dynamic = 'force-dynamic';
 export default async function InsightsPage() {
   const { userId, tz, today } = await requirePageContext();
 
-  const habits = await listActiveHabits(userId);
-  const statsByHabit = await getHabitStatsBatch(userId, habits, today);
+  // Read the full habit + entry sets ONCE (plus the two independent tiles'
+  // sources) and derive everything else in memory — habits and entries used to
+  // each be fetched twice. These four reads have no data dependency, so run
+  // them in one wave.
+  const [allHabits, allEntries, fasts, domainsList] = await Promise.all([
+    listAllHabits(userId),
+    listAllEntries(userId),
+    listFasts(userId),
+    listUserDomains(userId),
+  ]);
+
+  // Active habits = the archived === 0 subset of allHabits. listAllHabits orders
+  // by (archived ASC, sort_order ASC, id ASC); within the archived=0 slice the
+  // archived key is constant, so the residual order is (sort_order ASC, id ASC)
+  // — byte-identical to the old listActiveHabits query.
+  const habits = allHabits.filter((h) => h.archived === 0);
+
+  // Per-habit stats, derived from the single allEntries read instead of a second
+  // entries query. This replicates getHabitStatsBatch exactly: group entries by
+  // habit_id (allEntries arrives date-ASC, so each group is date-ASC — the same
+  // order getHabitStatsBatch's `ORDER BY habit_id, date ASC` produces, and there
+  // is one entry per (habit, date)), filter each group to date >= start_date,
+  // then run the same computeHabitStats. Numerically identical to the old call.
+  const entriesByHabit = new Map<number, typeof allEntries>();
+  for (const e of allEntries) {
+    const list = entriesByHabit.get(e.habit_id);
+    if (list) list.push(e);
+    else entriesByHabit.set(e.habit_id, [e]);
+  }
+  const statsByHabit = new Map<number, ReturnType<typeof computeHabitStats>>();
+  for (const habit of habits) {
+    const es = (entriesByHabit.get(habit.id) ?? []).filter(
+      (e) => e.date >= habit.start_date
+    );
+    statsByHabit.set(habit.id, computeHabitStats(habit, es, today));
+  }
+
   const rows = habits
     .map((habit) => ({ habit, stats: statsByHabit.get(habit.id)! }))
     .sort((a, b) => {
@@ -44,9 +79,7 @@ export default async function InsightsPage() {
   const overall = passes + fails === 0 ? null : passes / (passes + fails);
   const bestStreak = rows.reduce((m, r) => Math.max(m, r.stats.currentStreak), 0);
 
-  // Cross-habit analytics.
-  const allHabits = await listAllHabits(userId);
-  const allEntries = await listAllEntries(userId);
+  // Cross-habit analytics (over the same allHabits / allEntries read above).
   const perfect = perfectDays(allHabits, allEntries, today);
   // The win-rate charts below are about DOING things, so they only make sense
   // for build habits — a quit habit records slips only (no passes), which would
@@ -75,11 +108,13 @@ export default async function InsightsPage() {
     return { label: date.slice(5), rate: p + f ? Math.round((p / (p + f)) * 100) : null };
   });
 
-  const fastStats = computeFastStats(await listFasts(userId));
+  const fastStats = computeFastStats(fasts);
   // Pushups/pullups are opt-in custom habits — no habit, no tile.
-  const domains = new Set((await listUserDomains(userId)).map((d) => d.domain));
-  const pushups = domains.has('pushups') ? await getPushupState(userId, tz) : null;
-  const pullups = domains.has('pullups') ? await getPullupState(userId, tz) : null;
+  const domains = new Set(domainsList.map((d) => d.domain));
+  const [pushups, pullups] = await Promise.all([
+    domains.has('pushups') ? getPushupState(userId, tz) : Promise.resolve(null),
+    domains.has('pullups') ? getPullupState(userId, tz) : Promise.resolve(null),
+  ]);
 
   return (
     <main className="pb-28 pt-4">
