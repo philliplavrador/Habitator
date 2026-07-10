@@ -7,6 +7,9 @@ const nextConfig = {
   // `serverExternalPackages` in Next 15.)
   experimental: {
     serverComponentsExternalPackages: ['better-sqlite3'],
+    // recharts is already covered by Next 14.2's default optimizePackageImports;
+    // framer-motion is not, so add it here to tree-shake its named imports.
+    optimizePackageImports: ['framer-motion'],
   },
 };
 

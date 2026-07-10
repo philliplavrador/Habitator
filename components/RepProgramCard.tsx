@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import HeroLogCard, { heroInputClass } from './HeroLogCard';
 import Button from './ui/Button';
 import SegmentedControl from './ui/SegmentedControl';
-import GuidedWorkout from './GuidedWorkout';
 import {
   apiLogReps,
   apiUploadRepVideo,
@@ -14,6 +14,13 @@ import {
 import type { RepProgramState } from '@/lib/types';
 import { useCelebration } from './hooks/useCelebration';
 import { useToast } from './ui/toast';
+
+// Lazy-load the camera flow so its media-capture code stays out of the rep
+// pages' First Load JS. Only rendered when mode === 'record', so ssr:false is safe.
+const GuidedWorkout = dynamic(() => import('./GuidedWorkout'), {
+  ssr: false,
+  loading: () => null,
+});
 
 interface Props {
   initialState: RepProgramState;
