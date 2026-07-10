@@ -3,7 +3,7 @@ import DateNav from '@/components/DateNav';
 import TodayClient, { type WidgetItem } from '@/components/TodayClient';
 import RepProgramSummary from '@/components/RepProgramSummary';
 import AnkiSummary from '@/components/AnkiSummary';
-import Footer from '@/components/Footer';
+import AccountMenu from '@/components/AccountMenu';
 import { listActiveHabits } from '@/lib/habits';
 import { statusMapForDate, listEntriesForDateRange } from '@/lib/entries';
 import { getCurrentStreaksBatch } from '@/lib/stats';
@@ -14,6 +14,7 @@ import { listRepProgramStates } from '@/lib/repPrograms';
 import { getAnkiState } from '@/lib/anki';
 import { listUserDomains } from '@/lib/domains';
 import { requirePageContext } from '@/lib/pageContext';
+import { getUsername } from '@/lib/auth';
 import {
   addDays,
   compareISO,
@@ -44,16 +45,18 @@ export default async function TodayPage({
   // Wave 1 — reads that don't depend on the habit list. `statusMap` and the
   // active-habit list come back together; the two "today-only" reads
   // (user_domains, user rep-program states) are gated to the current day.
-  const [statusMap, allHabits, domainsList, userRepStates] = await Promise.all([
-    statusMapForDate(userId, selected),
-    listActiveHabits(userId),
-    // Pushups/pullups/japanese are opt-in custom habits — nothing is created
-    // with the account, so a widget exists only for a domain this user added.
-    isToday ? listUserDomains(userId) : Promise.resolve([]),
-    // User-defined rep programs (the configurable "template instances") surface
-    // the same summary widget as the two built-ins, inline in the habit list.
-    isToday ? listRepProgramStates(userId, tz) : Promise.resolve([]),
-  ]);
+  const [statusMap, allHabits, domainsList, userRepStates, username] =
+    await Promise.all([
+      statusMapForDate(userId, selected),
+      listActiveHabits(userId),
+      // Pushups/pullups/japanese are opt-in custom habits — nothing is created
+      // with the account, so a widget exists only for a domain this user added.
+      isToday ? listUserDomains(userId) : Promise.resolve([]),
+      // User-defined rep programs (the configurable "template instances") surface
+      // the same summary widget as the two built-ins, inline in the habit list.
+      isToday ? listRepProgramStates(userId, tz) : Promise.resolve([]),
+      getUsername(userId),
+    ]);
 
   // Show a habit only on days it's due: daily/weekly every day, weekdays/interval
   // only on their scheduled days (isDueOn also enforces start_date >= selected).
@@ -150,15 +153,18 @@ export default async function TodayPage({
   return (
     <main className="pb-28 pt-4">
       <header className="mb-5">
-        <h1 className="mb-4 text-center font-display text-xl font-bold tracking-tight text-gradient">
-          Habitator
-        </h1>
+        <div className="relative mb-4 flex items-center justify-center">
+          <h1 className="text-center font-display text-xl font-bold tracking-tight text-gradient">
+            Habitator
+          </h1>
+          <div className="absolute inset-y-0 right-0 flex items-center">
+            <AccountMenu username={username ?? ''} />
+          </div>
+        </div>
         <DateNav date={selected} prevDate={prevDate} nextDate={nextDate} today={today} />
       </header>
 
       <TodayClient date={selected} initialItems={items} widgets={widgets} />
-
-      <Footer />
 
       {/* Floating add button — adding a habit is always one tap away. Sits above
           the bottom nav and aligns to the phone column on any viewport. */}

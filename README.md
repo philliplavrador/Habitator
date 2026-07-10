@@ -201,8 +201,8 @@ lib/
   tz.ts                  # server-side tz resolution from the `tz` cookie
   types.ts, validate.ts, client.ts
 components/
-  HabitRow, HabitCalendar, AddHabitForm, Heatmap, DateNav, Footer, BottomNav …
-  RepProgramPage, RepProgram{Card,History,Summary}, SessionHeatmap  # rep screens
+  HabitRow, HabitCalendar, AddHabitForm, Heatmap, DateNav, AccountMenu, BottomNav …
+  RepProgramPage, RepProgram{Card,History,Summary}, RepRecordings   # rep screens
   Fast*, Anki*, HeroLogCard                                         # domain cards
   SummaryCard, ContributionGrid, EditableHistoryRow, BackHeader     # shared bits
   TimezoneSync.tsx        # writes the `tz` cookie + refreshes (renders nothing)

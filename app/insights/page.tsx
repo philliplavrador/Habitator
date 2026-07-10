@@ -5,11 +5,13 @@ import ChartCard from '@/components/charts/ChartCard';
 import LineTrend from '@/components/charts/LineTrend';
 import BarBreakdown from '@/components/charts/BarBreakdown';
 import { chart, weekdayColor } from '@/components/charts/theme';
+import AccountMenu from '@/components/AccountMenu';
 import { listAllHabits } from '@/lib/habits';
 import { computeHabitStats, formatRate } from '@/lib/stats';
 import { listAllEntries } from '@/lib/entries';
 import { listFasts } from '@/lib/fasts';
 import { requirePageContext } from '@/lib/pageContext';
+import { getUsername } from '@/lib/auth';
 import { computeFastStats } from '@/lib/fastStats';
 import { getPushupState } from '@/lib/pushups';
 import { getPullupState } from '@/lib/pullups';
@@ -27,12 +29,14 @@ export default async function InsightsPage() {
   // sources) and derive everything else in memory — habits and entries used to
   // each be fetched twice. These four reads have no data dependency, so run
   // them in one wave.
-  const [allHabits, allEntries, fasts, domainsList] = await Promise.all([
-    listAllHabits(userId),
-    listAllEntries(userId),
-    listFasts(userId),
-    listUserDomains(userId),
-  ]);
+  const [allHabits, allEntries, fasts, domainsList, username] =
+    await Promise.all([
+      listAllHabits(userId),
+      listAllEntries(userId),
+      listFasts(userId),
+      listUserDomains(userId),
+      getUsername(userId),
+    ]);
 
   // Active habits = the archived === 0 subset of allHabits. listAllHabits orders
   // by (archived ASC, sort_order ASC, id ASC); within the archived=0 slice the
@@ -119,9 +123,14 @@ export default async function InsightsPage() {
   return (
     <main className="pb-28 pt-4">
       <header className="mb-5">
-        <h1 className="text-center font-display text-xl font-bold tracking-tight text-text-primary">
-          Insights
-        </h1>
+        <div className="relative flex items-center justify-center">
+          <h1 className="text-center font-display text-xl font-bold tracking-tight text-text-primary">
+            Insights
+          </h1>
+          <div className="absolute inset-y-0 right-0 flex items-center">
+            <AccountMenu username={username ?? ''} />
+          </div>
+        </div>
         <p className="mt-1 text-center text-xs text-text-muted">
           Everything you&apos;re building, at a glance.
         </p>

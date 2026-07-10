@@ -14,6 +14,7 @@ import {
   apiUploadRepVideo,
 } from '@/lib/client';
 import { formatHuman } from '@/lib/dates';
+import { repVideoUrls } from '@/lib/repVideo';
 import type { RepSession } from '@/lib/types';
 
 interface Props {
@@ -59,16 +60,9 @@ function SessionRow({
   const pendingTarget = useRef<UploadTarget | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const workoutUrl = session.video
-    ? `${basePath}/${session.id}/video?v=${encodeURIComponent(session.video)}`
-    : null;
-  const setUrl = (i: number) => {
-    const name = session.videos[i];
-    return name
-      ? `${basePath}/${session.id}/video/${i}?v=${encodeURIComponent(name)}`
-      : null;
-  };
-  const hasAnyVideo = !!workoutUrl || session.videos.some(Boolean);
+  const { workout: workoutUrl, sets: setUrls } = repVideoUrls(basePath, session);
+  const setUrl = (i: number) => setUrls[i] ?? null;
+  const hasAnyVideo = !!workoutUrl || setUrls.some(Boolean);
 
   async function save() {
     const parsed = reps.map((r) => {

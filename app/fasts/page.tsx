@@ -1,12 +1,13 @@
 import FastClient from '@/components/FastClient';
 import FastHistory from '@/components/FastHistory';
-import Footer from '@/components/Footer';
+import AccountMenu from '@/components/AccountMenu';
 import StatTile from '@/components/ui/StatTile';
 import ChartCard from '@/components/charts/ChartCard';
 import BarBreakdown from '@/components/charts/BarBreakdown';
 import { chart } from '@/components/charts/theme';
 import { listFasts } from '@/lib/fasts';
 import { requirePageContext } from '@/lib/pageContext';
+import { getUsername } from '@/lib/auth';
 import { computeFastStats } from '@/lib/fastStats';
 import {
   fastDurationSeries,
@@ -20,7 +21,10 @@ export const dynamic = 'force-dynamic';
 
 export default async function FastsPage() {
   const { userId, tz, today } = await requirePageContext();
-  const fasts = await listFasts(userId);
+  const [fasts, username] = await Promise.all([
+    listFasts(userId),
+    getUsername(userId),
+  ]);
   // listFasts orders the (at most one, per the uniq_fast_active index) in-progress
   // fast first — `ORDER BY (end_at IS NULL) DESC, …` — so the active fast, if any,
   // is fasts[0]. This is exactly getActiveFast's result (WHERE end_at IS NULL
@@ -39,9 +43,14 @@ export default async function FastsPage() {
   return (
     <main className="pb-28 pt-4">
       <header className="mb-5">
-        <h1 className="text-center font-display text-xl font-bold tracking-tight text-text-primary">
-          Fasting
-        </h1>
+        <div className="relative flex items-center justify-center">
+          <h1 className="text-center font-display text-xl font-bold tracking-tight text-text-primary">
+            Fasting
+          </h1>
+          <div className="absolute inset-y-0 right-0 flex items-center">
+            <AccountMenu username={username ?? ''} />
+          </div>
+        </div>
       </header>
 
       <FastClient active={active} tz={tz} />
@@ -77,8 +86,6 @@ export default async function FastsPage() {
       )}
 
       <FastHistory fasts={fasts} stats={stats} tz={tz} />
-
-      <Footer />
     </main>
   );
 }

@@ -97,6 +97,15 @@ export async function findUserByUsername(
   ]);
 }
 
+/** The display username for a user id (for the account menu), or null. */
+export async function getUsername(userId: number): Promise<string | null> {
+  const row = await one<{ username: string }>(
+    'SELECT username FROM users WHERE id = $1',
+    [userId]
+  );
+  return row?.username ?? null;
+}
+
 /** Create a user with a fresh password hash. Caller enforces the signup policy. */
 export async function createUser(
   username: string,

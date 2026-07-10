@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import RepProgramCard from '@/components/RepProgramCard';
 import RepProgramHistory from '@/components/RepProgramHistory';
+import RepRecordings from '@/components/RepRecordings';
 import SessionHeatmap from '@/components/SessionHeatmap';
 import StatTile from '@/components/ui/StatTile';
 import ChartCard from '@/components/charts/ChartCard';
@@ -67,6 +68,8 @@ export default async function RepProgramPage({
       </header>
 
       <RepProgramCard initialState={state} />
+
+      <RepRecordings basePath={state.basePath} sessions={sessions} />
 
       {sessions.length > 0 && (
         <section className="mt-6 flex flex-col gap-3">
