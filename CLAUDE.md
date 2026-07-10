@@ -83,9 +83,26 @@ custom habits, **not** separate destinations:
 - Their full screens (`/pushups`, `/pullups`, `/japanese`) still exist and are
   reached via each widget's "Open →" link (or the direct route).
 
-When adding a new habit-like domain, follow this pattern: give it a summary
-widget rendered inline on Today, not a new bottom-nav tab. Reserve new tabs for
-genuinely non-habit domains (like fasting).
+**Custom habits are opt-in, not seeded.** Nothing domain-specific is created
+with an account. Adding a habit (`/habits/new`, `NewHabitFlow`) is three steps:
+Build / Quit / **Custom**. "Custom" opens a *library* of the trackers coded into
+the app — the entries live in `CUSTOM_HABIT_LIBRARY` (`lib/domains.ts`), and
+today it offers exactly two: the configurable **progressive rep program** (a
+`rep_programs` row — a user can have several) and the **Anki goal** (the
+`japanese` domain — one per account). Whether a user has a built-in domain is a
+row in **`user_domains`** (`pushups` | `pullups` | `japanese`); the Today widget,
+the full screen, and the Insights tiles all gate on it. `pushups`/`pullups` are
+no longer offered in the library (a new user builds a rep program instead) but
+remain real domains so pre-existing accounts keep them. Each widget carries a
+**delete** button (`DeleteWidgetButton`) that removes the habit **and its logged
+data**: built-ins via `DELETE /api/domains/[domain]`, user rep programs via
+`DELETE /api/rep-programs/[id]`. Boot backfills `user_domains` from existing data
+(`lib/db.ts`), so no one loses a tracker in the cutover.
+
+When adding a new *coded-in* custom habit, add it to the library in
+`lib/domains.ts` (and, if it's a new domain, a `DomainKey` + its data-table
+mapping) — never a new bottom-nav tab. Reserve new tabs for genuinely non-habit
+domains (like fasting).
 
 Layout:
 - `app/` — pages (server components open with `requirePageContext()`) and

@@ -17,6 +17,12 @@ interface Props {
   completeBadge?: ReactNode;
   /** Extra footer-right content shown before the "Open →" link. */
   aside?: ReactNode;
+  /**
+   * Corner control (e.g. delete). Rendered as a SIBLING of the card's `<Link>`,
+   * overlaid top-right — a button nested inside an anchor is invalid HTML and
+   * would navigate on tap. The header reserves room for it via `pr-8`.
+   */
+  action?: ReactNode;
   /** Footer-left content. */
   children: ReactNode;
 }
@@ -35,29 +41,36 @@ export default function SummaryCard({
   badge,
   completeBadge = 'Complete 🎉',
   aside,
+  action,
   children,
 }: Props) {
   return (
-    <Link
-      href={href}
-      className="mb-4 block rounded-card border border-border bg-surface p-4 shadow-card transition-colors active:bg-surface2"
-    >
-      <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="font-display text-base font-bold text-text-primary">{title}</h2>
-        <span className="text-xs font-semibold text-accent-400">
-          {complete ? completeBadge : badge ?? `${Math.floor(pct)}%`}
-        </span>
-      </div>
+    <div className="relative mb-4">
+      <Link
+        href={href}
+        className="block rounded-card border border-border bg-surface p-4 shadow-card transition-colors active:bg-surface2"
+      >
+        <div
+          className={`mb-3 flex items-baseline justify-between ${action ? 'pr-8' : ''}`}
+        >
+          <h2 className="font-display text-base font-bold text-text-primary">{title}</h2>
+          <span className="text-xs font-semibold text-accent-400">
+            {complete ? completeBadge : badge ?? `${Math.floor(pct)}%`}
+          </span>
+        </div>
 
-      <ProgressBar value={pct / 100} tone={complete ? 'pass' : 'accent'} />
+        <ProgressBar value={pct / 100} tone={complete ? 'pass' : 'accent'} />
 
-      <div className="mt-2 flex items-center justify-between text-xs">
-        {children}
-        <span className="flex items-center gap-2">
-          {aside}
-          <span className="font-semibold text-accent-400">Open →</span>
-        </span>
-      </div>
-    </Link>
+        <div className="mt-2 flex items-center justify-between text-xs">
+          {children}
+          <span className="flex items-center gap-2">
+            {aside}
+            <span className="font-semibold text-accent-400">Open →</span>
+          </span>
+        </div>
+      </Link>
+
+      {action && <div className="absolute right-2.5 top-2.5">{action}</div>}
+    </div>
   );
 }

@@ -41,6 +41,15 @@ touching a query, a streak, or the migration.
 - Rep programs are a generic engine, not per-program CRUD:
   `repProgram.ts` (the engine: `createRepProgram(config)`) + `repRoute.ts` (HTTP
   handler factories) + tiny config modules `pushups.ts` / `pullups.ts`.
+- `domains.ts` — the opt-in for the built-in custom habits
+  (`pushups`/`pullups`/`japanese`). `user_domains` CRUD + `CUSTOM_HABIT_LIBRARY`
+  (the add-habit picker's coded-in list). `removeUserDomain` deletes the opt-in
+  **and** the domain's data atomically. Nothing is seeded at signup; `lib/db.ts`
+  backfills the table from existing data **once** (an `app_meta` flag, like the
+  SQLite import — not per boot, so a deleted domain can't be resurrected by a
+  reboot). `anki.ts` reads the `japanese` row's `created_at` to start the deck's
+  pace clock at the add date (stored as the owner's local add-day; pinned to
+  `ANKI.startDate` for pre-existing users so their stats don't shift).
 
 **Pure aggregation (no DB — callers pass rows in)**
 - `analytics.ts` — habit/fast/rep/anki chart series + streak helpers.

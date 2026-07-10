@@ -150,6 +150,19 @@ CREATE INDEX IF NOT EXISTS idx_rep_prog_sessions_prog ON rep_program_sessions (p
 CREATE INDEX IF NOT EXISTS idx_rep_prog_sessions_user ON rep_program_sessions (user_id);
 CREATE INDEX IF NOT EXISTS idx_rep_prog_sessions_completed ON rep_program_sessions (program_id, completed);
 
+-- Opt-in for the built-in custom-habit domains (pushups / pullups / japanese).
+-- A row means "this user added that habit"; no row means its Today widget and
+-- full screen don't exist for them. Nothing is seeded at signup — the user adds
+-- them from the add-habit template picker (see lib/domains.ts).
+CREATE TABLE IF NOT EXISTS user_domains (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  domain     TEXT    NOT NULL,   -- 'pushups' | 'pullups' | 'japanese'
+  created_at TEXT    NOT NULL,
+  UNIQUE (user_id, domain)
+);
+CREATE INDEX IF NOT EXISTS idx_user_domains_user ON user_domains (user_id);
+
 -- Global key/value store for one-time bootstraps (e.g. the SQLite→Postgres
 -- migration flag). Not user-scoped.
 CREATE TABLE IF NOT EXISTS app_meta (
@@ -178,6 +191,36 @@ ALTER TABLE habits ADD COLUMN IF NOT EXISTS schedule TEXT;
 -- + no default keeps migrate.ts's explicit-column INSERT (which omits it) valid,
 -- exactly like the schedule column above.
 ALTER TABLE habits ADD COLUMN IF NOT EXISTS end_date TEXT;
+`;
+
+// Backfill the custom-habit opt-in for users who predate `user_domains`: if you
+// have data in a domain, you obviously have that habit. It runs EXACTLY ONCE
+// (guarded by the `user_domains_backfilled` app_meta flag, like the SQLite
+// import), not on every boot. Running it every boot would let a *deleted* domain
+// come back: the delete drops the opt-in AND the data, but the log routes don't
+// gate on domain membership, so a stale open tab could re-create a data row
+// after the delete — a per-boot backfill would then re-enable the domain from
+// that orphan row. Once-only closes that door. `created_at` is derived from the
+// data (no now()), so the backfill is deterministic.
+//
+// Japanese pins to the deck's original start date rather than the earliest
+// logged day: `created_at` is what starts that tracker's pace clock (see
+// lib/anki.ts::resolveStartDate), so pinning keeps every pre-existing user's
+// day-count, pace, and finish estimates exactly where they were. It MUST stay
+// equal to `ANKI.startDate` (a frozen historical constant, hence the literal —
+// db.ts can't import anki.ts, which imports back through domains.ts).
+const BACKFILL_USER_DOMAINS = `
+INSERT INTO user_domains (user_id, domain, created_at)
+SELECT user_id, 'pushups', MIN(date) || 'T00:00:00.000Z' FROM pushup_sessions GROUP BY user_id
+ON CONFLICT (user_id, domain) DO NOTHING;
+
+INSERT INTO user_domains (user_id, domain, created_at)
+SELECT user_id, 'pullups', MIN(date) || 'T00:00:00.000Z' FROM pullup_sessions GROUP BY user_id
+ON CONFLICT (user_id, domain) DO NOTHING;
+
+INSERT INTO user_domains (user_id, domain, created_at)
+SELECT DISTINCT user_id, 'japanese', '2026-07-04T00:00:00.000Z' FROM anki_days
+ON CONFLICT (user_id, domain) DO NOTHING;
 `;
 
 // Arbitrary constant identifying the schema/migration advisory lock. Any two
@@ -257,6 +300,19 @@ async function initialize(): Promise<void> {
     // Dynamic import breaks the db↔migrate cycle (migrate uses these helpers).
     const { runMigrationOnce } = await import('./migrate');
     await runMigrationOnce(client);
+    // One-time custom-habit opt-in backfill, after the import so freshly-migrated
+    // rows enable their domains too. Guarded by an app_meta flag so it runs once
+    // ever (not per boot) — see BACKFILL_USER_DOMAINS for why once-only matters.
+    const done = await client.query(
+      `SELECT 1 FROM app_meta WHERE key = 'user_domains_backfilled'`
+    );
+    if (done.rowCount === 0) {
+      await client.query(BACKFILL_USER_DOMAINS);
+      await client.query(
+        `INSERT INTO app_meta (key, value) VALUES ('user_domains_backfilled', '1')
+         ON CONFLICT (key) DO NOTHING`
+      );
+    }
   } finally {
     await client
       .query('SELECT pg_advisory_unlock($1)', [INIT_LOCK_KEY])

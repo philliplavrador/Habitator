@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import AnkiLogCard from '@/components/AnkiLogCard';
 import AnkiHistory from '@/components/AnkiHistory';
 import ProgressBar from '@/components/ProgressBar';
@@ -7,6 +8,7 @@ import ChartCard from '@/components/charts/ChartCard';
 import LineTrend from '@/components/charts/LineTrend';
 import { chart } from '@/components/charts/theme';
 import { getAnkiState, listAnkiDays } from '@/lib/anki';
+import { hasUserDomain } from '@/lib/domains';
 import { requirePageContext } from '@/lib/pageContext';
 import { ankiCumulativeSeries } from '@/lib/analytics';
 import { formatHumanYear } from '@/lib/dates';
@@ -17,6 +19,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function JapanesePage() {
   const { userId, tz } = await requirePageContext();
+  // An opt-in custom habit: no habit (never added, or deleted), no screen.
+  if (!(await hasUserDomain(userId, 'japanese'))) redirect('/');
+
   const state = await getAnkiState(userId, tz);
   const days = await listAnkiDays(userId);
   const series = ankiCumulativeSeries(

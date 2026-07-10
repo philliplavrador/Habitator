@@ -1,3 +1,4 @@
+import DeleteWidgetButton from './DeleteWidgetButton';
 import SummaryCard from './SummaryCard';
 import type { AnkiState } from '@/lib/types';
 
@@ -6,7 +7,14 @@ import type { AnkiState } from '@/lib/types';
  * and today's log status at a glance; links to /japanese for logging, history,
  * pace, and the completion estimates.
  */
-export default function AnkiSummary({ state }: { state: AnkiState }) {
+export default function AnkiSummary({
+  state,
+  deleteEndpoint,
+}: {
+  state: AnkiState;
+  /** When set, the card shows a delete button wired to this endpoint. */
+  deleteEndpoint?: string;
+}) {
   const paceAhead = state.paceDeltaCards >= 0;
 
   return (
@@ -15,6 +23,11 @@ export default function AnkiSummary({ state }: { state: AnkiState }) {
       href="/japanese"
       pct={state.cardsPct * 100}
       complete={state.goalReached}
+      action={
+        deleteEndpoint ? (
+          <DeleteWidgetButton label="Japanese" endpoint={deleteEndpoint} />
+        ) : null
+      }
     >
       {state.goalReached ? (
         <span className="text-text-secondary">

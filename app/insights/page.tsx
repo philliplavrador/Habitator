@@ -13,6 +13,7 @@ import { requirePageContext } from '@/lib/pageContext';
 import { computeFastStats } from '@/lib/fastStats';
 import { getPushupState } from '@/lib/pushups';
 import { getPullupState } from '@/lib/pullups';
+import { listUserDomains } from '@/lib/domains';
 import { cumulativePasses, dayOfWeekBreakdown, perfectDays } from '@/lib/analytics';
 import { formatDuration } from '@/lib/dates';
 
@@ -75,8 +76,10 @@ export default async function InsightsPage() {
   });
 
   const fastStats = computeFastStats(await listFasts(userId));
-  const pushups = await getPushupState(userId, tz);
-  const pullups = await getPullupState(userId, tz);
+  // Pushups/pullups are opt-in custom habits — no habit, no tile.
+  const domains = new Set((await listUserDomains(userId)).map((d) => d.domain));
+  const pushups = domains.has('pushups') ? await getPushupState(userId, tz) : null;
+  const pullups = domains.has('pullups') ? await getPullupState(userId, tz) : null;
 
   return (
     <main className="pb-28 pt-4">
@@ -168,22 +171,26 @@ export default async function InsightsPage() {
             sub={`${fastStats.totalFasts} logged`}
           />
         </Link>
-        <Link href="/pushups" className="block">
-          <StatTile
-            label="Pushup day"
-            value={pushups.programComplete ? '✓' : String(pushups.currentDay)}
-            sub={`of ${pushups.programDays}`}
-            accent="accent"
-          />
-        </Link>
-        <Link href="/pullups" className="block">
-          <StatTile
-            label="Pullup day"
-            value={pullups.programComplete ? '✓' : String(pullups.currentDay)}
-            sub={`of ${pullups.programDays}`}
-            accent="accent"
-          />
-        </Link>
+        {pushups && (
+          <Link href="/pushups" className="block">
+            <StatTile
+              label="Pushup day"
+              value={pushups.programComplete ? '✓' : String(pushups.currentDay)}
+              sub={`of ${pushups.programDays}`}
+              accent="accent"
+            />
+          </Link>
+        )}
+        {pullups && (
+          <Link href="/pullups" className="block">
+            <StatTile
+              label="Pullup day"
+              value={pullups.programComplete ? '✓' : String(pullups.currentDay)}
+              sub={`of ${pullups.programDays}`}
+              accent="accent"
+            />
+          </Link>
+        )}
       </section>
     </main>
   );

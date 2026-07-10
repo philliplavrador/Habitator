@@ -12,6 +12,7 @@ import { getPushupState } from '@/lib/pushups';
 import { getPullupState } from '@/lib/pullups';
 import { listRepProgramStates } from '@/lib/repPrograms';
 import { getAnkiState } from '@/lib/anki';
+import { listUserDomains } from '@/lib/domains';
 import { requirePageContext } from '@/lib/pageContext';
 import {
   addDays,
@@ -79,12 +80,21 @@ export default async function TodayPage({
   // The rep programs are "today" actions (they advance by completed session,
   // not calendar date), so only surface their cards on the current day.
   const isToday = selected === today;
-  const pushupState = isToday ? await getPushupState(userId, tz) : null;
-  const pullupState = isToday ? await getPullupState(userId, tz) : null;
+  // Pushups/pullups/japanese are opt-in custom habits — nothing is created with
+  // the account, so a widget exists only for a domain this user actually added.
+  const domains = new Set(
+    isToday ? (await listUserDomains(userId)).map((d) => d.domain) : []
+  );
+  const pushupState = domains.has('pushups')
+    ? await getPushupState(userId, tz)
+    : null;
+  const pullupState = domains.has('pullups')
+    ? await getPullupState(userId, tz)
+    : null;
   // User-defined rep programs (the configurable "template instances") surface the
   // same summary widget as the two built-ins, inline in the habit list.
   const userRepStates = isToday ? await listRepProgramStates(userId, tz) : [];
-  const ankiState = isToday ? await getAnkiState(userId, tz) : null;
+  const ankiState = domains.has('japanese') ? await getAnkiState(userId, tz) : null;
 
   // Pushups/pullups/japanese/custom rep programs are custom habits, not separate
   // destinations, so their summary widgets flow inline with the habit list
@@ -93,33 +103,40 @@ export default async function TodayPage({
   // exactly like an ordinary habit — a done one sinks into the "Completed"
   // section instead of cluttering the active list. Rendered server-side and
   // handed to TodayClient.
+  // Each widget also carries a `deleteEndpoint` — a custom habit is deletable
+  // from Today like any other habit. Built-in domains delete via /api/domains/*;
+  // a user rep program deletes via its own /api/rep-programs/<id> (= basePath).
   const widgets: WidgetItem[] = [];
   if (pushupState) {
     widgets.push({
       key: 'pushups',
       completed: pushupState.programComplete || pushupState.doneToday !== null,
-      node: <RepProgramSummary state={pushupState} />,
+      node: (
+        <RepProgramSummary state={pushupState} deleteEndpoint="/api/domains/pushups" />
+      ),
     });
   }
   if (pullupState) {
     widgets.push({
       key: 'pullups',
       completed: pullupState.programComplete || pullupState.doneToday !== null,
-      node: <RepProgramSummary state={pullupState} />,
+      node: (
+        <RepProgramSummary state={pullupState} deleteEndpoint="/api/domains/pullups" />
+      ),
     });
   }
   for (const s of userRepStates) {
     widgets.push({
       key: s.basePath,
       completed: s.programComplete || s.doneToday !== null,
-      node: <RepProgramSummary state={s} />,
+      node: <RepProgramSummary state={s} deleteEndpoint={s.basePath} />,
     });
   }
   if (ankiState) {
     widgets.push({
       key: 'japanese',
       completed: ankiState.goalReached || ankiState.loggedToday,
-      node: <AnkiSummary state={ankiState} />,
+      node: <AnkiSummary state={ankiState} deleteEndpoint="/api/domains/japanese" />,
     });
   }
 

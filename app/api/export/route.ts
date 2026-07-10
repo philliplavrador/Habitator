@@ -25,6 +25,7 @@ export async function GET() {
     repPrograms,
     repProgramSessions,
     ankiDays,
+    userDomains,
   ] = await Promise.all([
     many('SELECT * FROM habits WHERE user_id = $1 ORDER BY id ASC', [userId]),
     many(
@@ -50,6 +51,9 @@ export async function GET() {
     many('SELECT * FROM anki_days WHERE user_id = $1 ORDER BY date ASC', [
       userId,
     ]),
+    many('SELECT * FROM user_domains WHERE user_id = $1 ORDER BY id ASC', [
+      userId,
+    ]),
   ]);
 
   // Backup envelope. `version` and the table list below are coupled to the DB
@@ -63,10 +67,12 @@ export async function GET() {
   // video array. version 8 added habits.kind — 'build' | 'quit'. version 9
   // added habits.schedule — JSON-in-TEXT, NULL means daily. version 10 added the
   // user-defined rep programs: repPrograms + repProgramSessions. version 11 added
-  // habits.end_date — optional YYYY-MM-DD upper bound, NULL means ongoing.)
+  // habits.end_date — optional YYYY-MM-DD upper bound, NULL means ongoing. version
+  // 12 added userDomains — the opt-in for the built-in custom habits
+  // pushups/pullups/japanese.)
   const payload = {
     app: 'habitator',
-    version: 11,
+    version: 12,
     exportedAt: new Date().toISOString(),
     habits,
     entries,
@@ -76,6 +82,7 @@ export async function GET() {
     repPrograms,
     repProgramSessions,
     ankiDays,
+    userDomains,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

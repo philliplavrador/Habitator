@@ -1,5 +1,6 @@
 import { many, one, run } from './db';
 import { addDays, compareISO, nowISO, rangeDates, todayISO } from './dates';
+import { getUserDomain } from './domains';
 import type { AnkiDay, AnkiDayInput, AnkiState } from './types';
 
 // ── Config ──────────────────────────────────────────────────────────
@@ -8,6 +9,11 @@ import type { AnkiDay, AnkiDayInput, AnkiState } from './types';
 // Anki deck (5,999 cards total). Each day the owner logs how many *new* cards
 // they studied; the target pace is a floor of `dailyMin` new cards/day, which
 // also anchors the two completion estimates and the "ahead/behind pace" figure.
+//
+// `startDate` is only the FLOOR on how early a day may be logged (and the
+// fallback start). The pace clock actually starts the day the user added the
+// habit — see `resolveStartDate` — so someone who adds it a year from now isn't
+// instantly a year behind.
 export const ANKI = {
   deckName: 'Core 2k/6k Japanese',
   deckTotal: 5999,
@@ -94,6 +100,19 @@ export async function deleteAnkiDay(
 
 // ── State computation ───────────────────────────────────────────────
 
+/**
+ * The day this user's deck clock starts: the earlier of when they added the
+ * habit and their first logged day (a backdated log pulls the start back with
+ * it). Falls back to the deck's own start date when neither exists.
+ */
+function resolveStartDate(addedAt: string | undefined, daysAsc: AnkiDay[]): string {
+  const candidates = [addedAt?.slice(0, 10), daysAsc[0]?.date].filter(
+    (d): d is string => typeof d === 'string' && d !== ''
+  );
+  if (candidates.length === 0) return ANKI.startDate;
+  return candidates.reduce((a, b) => (compareISO(a, b) <= 0 ? a : b));
+}
+
 /** Load every day for the user and compute the full tracker state. */
 export async function getAnkiState(
   userId: number,
@@ -105,7 +124,12 @@ export async function getAnkiState(
       [userId]
     )
   ).map(hydrate);
-  return computeAnkiState(daysAsc, todayISO(tz));
+  const added = await getUserDomain(userId, 'japanese');
+  return computeAnkiState(
+    daysAsc,
+    todayISO(tz),
+    resolveStartDate(added?.created_at, daysAsc)
+  );
 }
 
 /**
@@ -121,8 +145,12 @@ export async function getAnkiState(
  *    Because it credits work already done, being ahead of pace pulls it earlier
  *    than baselineFinish.
  */
-export function computeAnkiState(daysAsc: AnkiDay[], today: string): AnkiState {
-  const { deckName, deckTotal, goal, dailyMin, startDate } = ANKI;
+export function computeAnkiState(
+  daysAsc: AnkiDay[],
+  today: string,
+  startDate: string = ANKI.startDate
+): AnkiState {
+  const { deckName, deckTotal, goal, dailyMin } = ANKI;
 
   // Cumulative total + the day the goal was first crossed.
   let totalDone = 0;

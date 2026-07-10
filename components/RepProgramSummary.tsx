@@ -1,12 +1,21 @@
+import DeleteWidgetButton from './DeleteWidgetButton';
 import SummaryCard from './SummaryCard';
 import type { RepProgramState } from '@/lib/types';
 
 /**
  * Compact, non-interactive rep-program card for the Today screen. Shows program
  * progress and the attempt streak at a glance and links to the full screen for
- * logging, history, heatmap, and charts. Shared by pushups and pullups.
+ * logging, history, heatmap, and charts. Shared by pushups, pullups, and the
+ * user-defined programs.
  */
-export default function RepProgramSummary({ state }: { state: RepProgramState }) {
+export default function RepProgramSummary({
+  state,
+  deleteEndpoint,
+}: {
+  state: RepProgramState;
+  /** When set, the card shows a delete button wired to this endpoint. */
+  deleteEndpoint?: string;
+}) {
   const pct = (state.completedCount / state.programDays) * 100;
   const done = state.doneToday !== null;
 
@@ -17,6 +26,11 @@ export default function RepProgramSummary({ state }: { state: RepProgramState })
       pct={pct}
       complete={state.programComplete}
       badge={`Day ${state.currentDay} of ${state.programDays}`}
+      action={
+        deleteEndpoint ? (
+          <DeleteWidgetButton label={state.label} endpoint={deleteEndpoint} />
+        ) : null
+      }
       aside={
         state.currentStreak > 0 ? (
           <span className="text-text-muted">🔥 {state.currentStreak}</span>

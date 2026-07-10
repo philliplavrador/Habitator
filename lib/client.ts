@@ -233,6 +233,22 @@ export async function apiDeleteRepProgram(id: number): Promise<void> {
   await request(`/api/rep-programs/${id}`, 'DELETE');
 }
 
+// ── Custom-habit domains (pushups / pullups / japanese) ─────────────
+
+/** Opt into a built-in custom habit. Idempotent server-side. */
+export async function apiAddDomain(domain: string): Promise<void> {
+  await request('/api/domains', 'POST', { domain });
+}
+
+/**
+ * Delete a Today-screen custom habit by its DELETE endpoint — `/api/domains/
+ * pushups` for a built-in domain, `/api/rep-programs/5` for a user program.
+ * Both drop the habit and everything logged in it.
+ */
+export async function apiDeleteCustomHabit(endpoint: string): Promise<void> {
+  await request(endpoint, 'DELETE');
+}
+
 // ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────
 
 /** Upsert one day's new-card count (date defaults to today server-side). */
