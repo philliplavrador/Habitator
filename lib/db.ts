@@ -280,6 +280,15 @@ function rawPool(): Pool {
       connectionString,
       ssl: sslConfig(),
       max: 10,
+      // Keep at least one warm connection so the first tap of a burst doesn't
+      // pay a cold-connect round-trip.
+      min: 1,
+      // Enable TCP keepalive so idle sockets aren't silently dropped by a
+      // proxy/NAT between the app and Postgres.
+      keepAlive: true,
+      // Raise the idle timeout from pg's 10s default so warm connections
+      // survive short idle gaps instead of being reaped between bursts.
+      idleTimeoutMillis: 60000,
     });
   }
   return globalForDb.__habitatorPool;
@@ -297,9 +306,21 @@ async function initialize(): Promise<void> {
     // Serialize schema creation + migration across concurrent booting instances.
     await client.query('SELECT pg_advisory_lock($1)', [INIT_LOCK_KEY]);
     await client.query(SCHEMA);
-    // Dynamic import breaks the db↔migrate cycle (migrate uses these helpers).
-    const { runMigrationOnce } = await import('./migrate');
-    await runMigrationOnce(client);
+    // Only load the migrate module (which dlopens the better-sqlite3 native
+    // addon) when the one-time SQLite→Postgres import hasn't run yet. On a
+    // warm/already-migrated DB the `sqlite_migrated` app_meta flag is present,
+    // so we skip the dynamic import entirely and never pay the dlopen.
+    // runMigrationOnce is itself idempotent (it re-checks the same flag); this
+    // gate is purely to avoid loading the addon. A fresh DB has rowCount === 0,
+    // so this path still runs the migration that SETS the flag the first time.
+    const migrated = await client.query(
+      `SELECT 1 FROM app_meta WHERE key = 'sqlite_migrated'`
+    );
+    if (migrated.rowCount === 0) {
+      // Dynamic import breaks the db↔migrate cycle (migrate uses these helpers).
+      const { runMigrationOnce } = await import('./migrate');
+      await runMigrationOnce(client);
+    }
     // One-time custom-habit opt-in backfill, after the import so freshly-migrated
     // rows enable their domains too. Guarded by an app_meta flag so it runs once
     // ever (not per boot) — see BACKFILL_USER_DOMAINS for why once-only matters.
