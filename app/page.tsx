@@ -2,6 +2,7 @@ import Link from 'next/link';
 import DateNav from '@/components/DateNav';
 import TodayClient, { type WidgetItem } from '@/components/TodayClient';
 import RepProgramSummary from '@/components/RepProgramSummary';
+import PlankProgramSummary from '@/components/PlankProgramSummary';
 import AnkiSummary from '@/components/AnkiSummary';
 import AccountMenu from '@/components/AccountMenu';
 import { listActiveHabits } from '@/lib/habits';
@@ -11,6 +12,7 @@ import { isDueOn, weekStartOf } from '@/lib/schedule';
 import { getPushupState } from '@/lib/pushups';
 import { getPullupState } from '@/lib/pullups';
 import { listRepProgramStates } from '@/lib/repPrograms';
+import { listPlankProgramStates } from '@/lib/plankPrograms';
 import { getAnkiState } from '@/lib/anki';
 import { listUserDomains } from '@/lib/domains';
 import { requirePageContext } from '@/lib/pageContext';
@@ -43,9 +45,9 @@ export default async function TodayPage({
   const isToday = selected === today;
 
   // Wave 1 — reads that don't depend on the habit list. `statusMap` and the
-  // active-habit list come back together; the two "today-only" reads
-  // (user_domains, user rep-program states) are gated to the current day.
-  const [statusMap, allHabits, domainsList, userRepStates, username] =
+  // active-habit list come back together; the "today-only" reads (user_domains,
+  // user rep-program states, user plank-program states) are gated to the current day.
+  const [statusMap, allHabits, domainsList, userRepStates, userPlankStates, username] =
     await Promise.all([
       statusMapForDate(userId, selected),
       listActiveHabits(userId),
@@ -55,6 +57,8 @@ export default async function TodayPage({
       // User-defined rep programs (the configurable "template instances") surface
       // the same summary widget as the two built-ins, inline in the habit list.
       isToday ? listRepProgramStates(userId, tz) : Promise.resolve([]),
+      // User-defined plank programs — the timed sibling; same inline treatment.
+      isToday ? listPlankProgramStates(userId, tz) : Promise.resolve([]),
       getUsername(userId),
     ]);
 
@@ -140,6 +144,13 @@ export default async function TodayPage({
       key: s.basePath,
       completed: s.programComplete || s.doneToday !== null,
       node: <RepProgramSummary state={s} deleteEndpoint={s.basePath} />,
+    });
+  }
+  for (const s of userPlankStates) {
+    widgets.push({
+      key: s.basePath,
+      completed: s.programComplete || s.doneToday !== null,
+      node: <PlankProgramSummary state={s} deleteEndpoint={s.basePath} />,
     });
   }
   if (ankiState) {

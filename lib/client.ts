@@ -6,6 +6,9 @@ import type {
   Fast,
   Habit,
   HabitInput,
+  PlankProgramInput,
+  PlankProgramRow,
+  PlankProgramState,
   RepProgramInput,
   RepProgramRow,
   RepProgramState,
@@ -68,7 +71,7 @@ async function requestJson<T>(
  * The filename rides along as a `?name=` query param (for extension detection);
  * the browser sets Content-Type from the File/Blob. Returns the fresh `state`.
  */
-async function putVideo(url: string, file: File): Promise<RepProgramState> {
+async function putVideo<T>(url: string, file: File): Promise<T> {
   const sep = url.includes('?') ? '&' : '?';
   const res = await fetch(`${url}${sep}name=${encodeURIComponent(file.name || 'video')}`, {
     method: 'PUT',
@@ -76,7 +79,7 @@ async function putVideo(url: string, file: File): Promise<RepProgramState> {
     body: file,
   });
   if (!res.ok) await asError(res);
-  return unwrap<RepProgramState>(res, 'state');
+  return unwrap<T>(res, 'state');
 }
 
 /**
@@ -191,7 +194,7 @@ export async function apiUploadRepVideo(
   id: number,
   file: File
 ): Promise<RepProgramState> {
-  return putVideo(`${basePath}/${id}/video`, file);
+  return putVideo<RepProgramState>(`${basePath}/${id}/video`, file);
 }
 
 export async function apiDeleteRepVideo(
@@ -212,7 +215,7 @@ export async function apiUploadRepSetVideo(
   set: number,
   file: File
 ): Promise<RepProgramState> {
-  return putVideo(`${basePath}/${id}/video/${set}`, file);
+  return putVideo<RepProgramState>(`${basePath}/${id}/video/${set}`, file);
 }
 
 export async function apiDeleteRepSetVideo(
@@ -249,6 +252,86 @@ export async function apiUpdateRepProgram(
 
 export async function apiDeleteRepProgram(id: number): Promise<void> {
   await request(`/api/rep-programs/${id}`, 'DELETE');
+}
+
+// ── Plank programs (user programs) ──────────────────────────────────
+// Keyed by the program's API base path (`state.basePath`), e.g.
+// '/api/plank-programs/5'. A hold is a single duration in whole seconds.
+
+export async function apiLogPlank(
+  basePath: string,
+  lasted: number
+): Promise<PlankProgramState> {
+  return requestJson<PlankProgramState>(basePath, 'POST', 'state', { lasted });
+}
+
+export async function apiUpdatePlankLasted(
+  basePath: string,
+  id: number,
+  lasted: number
+): Promise<PlankProgramState> {
+  return requestJson<PlankProgramState>(
+    `${basePath}/${id}`,
+    'PATCH',
+    'state',
+    { lasted }
+  );
+}
+
+export async function apiDeletePlankSession(
+  basePath: string,
+  id: number
+): Promise<PlankProgramState> {
+  return requestJson<PlankProgramState>(`${basePath}/${id}`, 'DELETE', 'state');
+}
+
+/** Attach or replace a plank session's video. Returns fresh state. */
+export async function apiUploadPlankVideo(
+  basePath: string,
+  id: number,
+  file: File
+): Promise<PlankProgramState> {
+  return putVideo<PlankProgramState>(`${basePath}/${id}/video`, file);
+}
+
+export async function apiDeletePlankVideo(
+  basePath: string,
+  id: number
+): Promise<PlankProgramState> {
+  return requestJson<PlankProgramState>(
+    `${basePath}/${id}/video`,
+    'DELETE',
+    'state'
+  );
+}
+
+// ── Plank-program config (create / edit / delete the program itself) ──
+
+export async function apiCreatePlankProgram(
+  input: PlankProgramInput
+): Promise<PlankProgramRow> {
+  return requestJson<PlankProgramRow>(
+    '/api/plank-programs',
+    'POST',
+    'program',
+    input
+  );
+}
+
+export async function apiUpdatePlankProgram(
+  id: number,
+  fields: { name: string }
+): Promise<PlankProgramRow> {
+  return requestJson<PlankProgramRow>(
+    `/api/plank-programs/${id}`,
+    'PATCH',
+    'program',
+    fields
+  );
+}
+
+export async function apiDeletePlankProgram(id: number): Promise<void> {
+  await request(`/api/plank-programs/${id}`, 'DELETE');
 }
 
 // ── Custom-habit domains (pushups / pullups / japanese) ─────────────

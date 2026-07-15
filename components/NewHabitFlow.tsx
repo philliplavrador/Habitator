@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AddHabitForm from './AddHabitForm';
 import RepProgramForm from './RepProgramForm';
+import PlankProgramForm from './PlankProgramForm';
 import { apiAddDomain } from '@/lib/client';
 import type { DomainLibraryEntry, LibraryEntry } from '@/lib/domains';
 
@@ -96,7 +97,9 @@ export default function NewHabitFlow({ tz, library, added }: Props) {
               badge={isAdded ? 'Added' : undefined}
               disabled={isAdded || busyKey !== null}
               onClick={() =>
-                entry.key === 'reps' ? setPicked(entry) : addDomain(entry)
+                entry.key === 'reps' || entry.key === 'plank'
+                  ? setPicked(entry)
+                  : addDomain(entry)
               }
             />
           );
@@ -114,7 +117,7 @@ export default function NewHabitFlow({ tz, library, added }: Props) {
         <BackLink label="Choose a different type" onClick={() => setTemplate(null)} />
       )}
       {template === 'custom' ? (
-        <RepProgramForm />
+        picked?.key === 'plank' ? <PlankProgramForm /> : <RepProgramForm />
       ) : (
         <AddHabitForm tz={tz} initialKind={template} />
       )}

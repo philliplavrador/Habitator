@@ -58,7 +58,10 @@ export type DomainLibraryEntry = LibraryEntryBase & {
   href: string;
 };
 
-export type LibraryEntry = (LibraryEntryBase & { key: 'reps' }) | DomainLibraryEntry;
+export type LibraryEntry =
+  | (LibraryEntryBase & { key: 'reps' })
+  | (LibraryEntryBase & { key: 'plank' })
+  | DomainLibraryEntry;
 
 export const CUSTOM_HABIT_LIBRARY: LibraryEntry[] = [
   {
@@ -66,6 +69,12 @@ export const CUSTOM_HABIT_LIBRARY: LibraryEntry[] = [
     emoji: '💪',
     title: 'Progressive rep program',
     desc: 'A ramping strength program — sets, rest, and one more rep every day. Hit every target to advance. Record a guided workout or type your reps.',
+  },
+  {
+    key: 'plank',
+    emoji: '🧘',
+    title: 'Plank Progression',
+    desc: 'A timed plank that ramps from a start hold to an end hold, a bit longer each day. Record a guided hold with a countdown timer or type how long you lasted.',
   },
   {
     key: 'japanese',

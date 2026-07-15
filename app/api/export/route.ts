@@ -24,6 +24,8 @@ export async function GET() {
     pullupSessions,
     repPrograms,
     repProgramSessions,
+    plankPrograms,
+    plankProgramSessions,
     ankiDays,
     userDomains,
   ] = await Promise.all([
@@ -48,6 +50,13 @@ export async function GET() {
       'SELECT * FROM rep_program_sessions WHERE user_id = $1 ORDER BY program_id ASC, id ASC',
       [userId]
     ),
+    many('SELECT * FROM plank_programs WHERE user_id = $1 ORDER BY id ASC', [
+      userId,
+    ]),
+    many(
+      'SELECT * FROM plank_program_sessions WHERE user_id = $1 ORDER BY program_id ASC, id ASC',
+      [userId]
+    ),
     many('SELECT * FROM anki_days WHERE user_id = $1 ORDER BY date ASC', [
       userId,
     ]),
@@ -69,10 +78,11 @@ export async function GET() {
   // user-defined rep programs: repPrograms + repProgramSessions. version 11 added
   // habits.end_date — optional YYYY-MM-DD upper bound, NULL means ongoing. version
   // 12 added userDomains — the opt-in for the built-in custom habits
-  // pushups/pullups/japanese.)
+  // pushups/pullups/japanese. version 13 added the user-defined plank programs:
+  // plankPrograms + plankProgramSessions.)
   const payload = {
     app: 'habitator',
-    version: 12,
+    version: 13,
     exportedAt: new Date().toISOString(),
     habits,
     entries,
@@ -81,6 +91,8 @@ export async function GET() {
     pullupSessions,
     repPrograms,
     repProgramSessions,
+    plankPrograms,
+    plankProgramSessions,
     ankiDays,
     userDomains,
   };

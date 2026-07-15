@@ -20,6 +20,7 @@ import type {
   Entry,
   Fast,
   Habit,
+  PlankSession,
   PushupSession,
   RepDayStatus,
   RepSession,
@@ -313,9 +314,12 @@ export function attemptStreak(dates: string[], today: string): StreakStat {
  * met every set, else 'attempted' (tried but fell short). Days with no session
  * are simply absent — the heatmap renders those as "skipped". `startDate` is the
  * earliest session date (null when there are no sessions). `sessions` may be in
- * any order.
+ * any order. Structural over `{ date, completed }`, so both rep and plank
+ * sessions feed it.
  */
-export function sessionHeatmap(sessions: RepSession[]): {
+export function sessionHeatmap(
+  sessions: Array<{ date: string; completed: boolean }>
+): {
   statusByDate: Record<string, RepDayStatus>;
   startDate: string | null;
 } {
@@ -359,8 +363,11 @@ export interface CompletionPoint {
   completed: number; // cumulative days completed
 }
 
-/** Cumulative days completed over the session log (chronological). */
-export function completionTimeline(sessions: PushupSession[]): CompletionPoint[] {
+/** Cumulative days completed over the session log (chronological). Structural
+ *  over `{ date, completed }`, so both rep and plank sessions feed it. */
+export function completionTimeline(
+  sessions: Array<{ date: string; completed: boolean }>
+): CompletionPoint[] {
   const chrono = [...sessions].reverse();
   let completed = 0;
   return chrono.map((s, i) => {
@@ -382,7 +389,7 @@ export interface Projection {
 export function projectedFinish(
   completedCount: number,
   programDays: number,
-  sessions: PushupSession[],
+  sessions: Array<{ date: string }>,
   today: string
 ): Projection {
   if (completedCount <= 0 || sessions.length === 0) {
@@ -400,6 +407,28 @@ export function projectedFinish(
   const remaining = programDays - completedCount;
   const daysToGo = Math.ceil(remaining / perDay);
   return { etaDate: addDays(today, daysToGo), perDay, daysToGo };
+}
+
+// ── Plank programs ──────────────────────────────────────────────────
+
+export interface PlankHoldPoint {
+  n: number; // session ordinal (1-based, chronological)
+  date: string;
+  held: number; // seconds held
+  target: number; // seconds prescribed
+  completed: boolean;
+}
+
+/** Seconds held per session over time (chronological). `sessions` is newest-first. */
+export function plankHoldSeries(sessions: PlankSession[]): PlankHoldPoint[] {
+  const chrono = [...sessions].reverse();
+  return chrono.map((s, i) => ({
+    n: i + 1,
+    date: s.date,
+    held: s.lasted_seconds,
+    target: s.target_seconds,
+    completed: s.completed,
+  }));
 }
 
 // ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────

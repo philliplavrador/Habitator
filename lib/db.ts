@@ -150,6 +150,42 @@ CREATE INDEX IF NOT EXISTS idx_rep_prog_sessions_prog ON rep_program_sessions (p
 CREATE INDEX IF NOT EXISTS idx_rep_prog_sessions_user ON rep_program_sessions (user_id);
 CREATE INDEX IF NOT EXISTS idx_rep_prog_sessions_completed ON rep_program_sessions (program_id, completed);
 
+-- User-defined plank programs — the timed sibling of rep programs. A row is one
+-- program's config (a hold-time ramp start-to-end by step); its sessions live in
+-- the shared plank_program_sessions table, keyed by program_id. One HOLD per day,
+-- so each session stores a single target/lasted duration (whole seconds) and a
+-- single optional video -- no per-set columns. completed stays a 0/1 INTEGER to
+-- match the other *_sessions tables (the COUNT(completed = 1) progression plus
+-- export/import fidelity), not a boolean.
+CREATE TABLE IF NOT EXISTS plank_programs (
+  id            SERIAL PRIMARY KEY,
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name          TEXT    NOT NULL,
+  start_seconds INTEGER NOT NULL,   -- day-1 hold target
+  end_seconds   INTEGER NOT NULL,   -- final hold target (ramp ceiling)
+  step_seconds  INTEGER NOT NULL,   -- seconds added to the target each day
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  archived      INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_plank_programs_user ON plank_programs (user_id);
+
+CREATE TABLE IF NOT EXISTS plank_program_sessions (
+  id             SERIAL PRIMARY KEY,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  program_id     INTEGER NOT NULL REFERENCES plank_programs(id) ON DELETE CASCADE,
+  date           TEXT    NOT NULL,          -- YYYY-MM-DD (local day of the attempt)
+  day_index      INTEGER NOT NULL,          -- program day this attempt targeted
+  target_seconds INTEGER NOT NULL,          -- prescribed hold, frozen at log time
+  lasted_seconds INTEGER NOT NULL,          -- actual hold achieved
+  completed      INTEGER NOT NULL,          -- 1 if lasted >= target
+  video          TEXT,                      -- optional stored video filename
+  created_at     TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_plank_prog_sessions_prog ON plank_program_sessions (program_id);
+CREATE INDEX IF NOT EXISTS idx_plank_prog_sessions_user ON plank_program_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_plank_prog_sessions_completed ON plank_program_sessions (program_id, completed);
+
 -- Opt-in for the built-in custom-habit domains (pushups / pullups / japanese).
 -- A row means "this user added that habit"; no row means its Today widget and
 -- full screen don't exist for them. Nothing is seeded at signup — the user adds

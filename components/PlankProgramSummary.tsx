@@ -1,18 +1,18 @@
 import DeleteWidgetButton from './DeleteWidgetButton';
 import SummaryCard from './SummaryCard';
-import type { RepProgramState } from '@/lib/types';
+import { formatHold } from '@/lib/plankFormat';
+import type { PlankProgramState } from '@/lib/types';
 
 /**
- * Compact, non-interactive rep-program card for the Today screen. Shows program
+ * Compact, non-interactive plank-program card for the Today screen. Shows program
  * progress (as a % done, like the Anki widget) and the attempt streak at a glance,
- * and links to the full screen for logging, history, heatmap, and charts. Shared
- * by pushups, pullups, and the user-defined programs.
+ * and links to the full screen for logging, history, heatmap, and charts.
  */
-export default function RepProgramSummary({
+export default function PlankProgramSummary({
   state,
   deleteEndpoint,
 }: {
-  state: RepProgramState;
+  state: PlankProgramState;
   /** When set, the card shows a delete button wired to this endpoint. */
   deleteEndpoint?: string;
 }) {
@@ -46,7 +46,7 @@ export default function RepProgramSummary({
         <span className="text-text-muted">
           Today:{' '}
           <span className="font-semibold text-text-secondary">
-            {state.target.join(' · ')}
+            {formatHold(state.targetSeconds)} hold
           </span>
         </span>
       )}

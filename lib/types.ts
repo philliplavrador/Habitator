@@ -251,6 +251,97 @@ export type RepDayStatus = 'complete' | 'attempted';
 // by lib/analytics.ts.
 export type PushupSession = RepSession;
 
+// ── Plank programs ──────────────────────────────────────────────────
+//
+// A "Plank Progression" is the timed sibling of a rep program: instead of reps
+// across sets, one plank HOLD per day whose target duration ramps from a start
+// time to an end time by a fixed step. Like rep programs it's a user-configurable
+// "template instance" (a user can have several), progression is driven purely by
+// the count of completed sessions, and each session freezes its own target so
+// editing the config never rewrites history. Values are whole seconds.
+
+/** A user-defined plank program — one row is one program's config. */
+export interface PlankProgramRow {
+  id: number;
+  name: string;
+  start_seconds: number; // day-1 hold target
+  end_seconds: number; // final hold target (the ramp's ceiling)
+  step_seconds: number; // seconds added to the target each day
+  sort_order: number;
+  archived: number; // 0 | 1
+  created_at: string;
+}
+
+/** Input accepted when creating a plank program. */
+export interface PlankProgramInput {
+  name: string;
+  start_seconds: number;
+  end_seconds: number;
+  step_seconds: number;
+}
+
+/**
+ * Static definition of one plank program, derived from a row. `programDays` is
+ * computed from start/end/step (not stored) — the ramp params are frozen after
+ * creation, so it's stable. Mirrors RepProgramConfig's role for the engine.
+ */
+export interface PlankProgramConfig {
+  /** Filename-safe media prefix, `plank<id>`. */
+  key: string;
+  /** The plank_programs row id, scoping every query. */
+  programId: number;
+  label: string; // display name
+  startSeconds: number;
+  endSeconds: number;
+  stepSeconds: number;
+  programDays: number; // length of the ramp (derived from start/end/step)
+  /** Human blurb for the finished state, e.g. "5:00". */
+  finishLabel: string;
+  /** API base, e.g. '/api/plank-programs/5'. */
+  basePath: string;
+  /** Screen path, e.g. '/plank-programs/5'. */
+  href: string;
+}
+
+/** One logged plank hold (may or may not have reached the day's target). */
+export interface PlankSession {
+  id: number;
+  date: string; // YYYY-MM-DD (local day of the attempt)
+  day_index: number; // program day this attempt targeted
+  target_seconds: number; // prescribed hold, frozen at log time
+  lasted_seconds: number; // actual hold achieved
+  completed: boolean; // lasted >= target
+  /** Optional single video of the hold (guided recording or an upload). */
+  video: string | null;
+  created_at: string;
+}
+
+/** The computed state of a plank program — drives its card + Today summary. */
+export interface PlankProgramState {
+  key: string;
+  basePath: string;
+  href: string;
+  label: string;
+  startSeconds: number;
+  endSeconds: number;
+  stepSeconds: number;
+  programDays: number;
+  finishLabel: string;
+  completedCount: number; // sessions completed
+  currentDay: number; // completedCount + 1, capped at programDays
+  targetSeconds: number; // prescribed hold for currentDay
+  daysLeft: number; // programDays - completedCount
+  programComplete: boolean; // completedCount >= programDays
+  /** A completed session dated today, if any — so the card can rest. */
+  doneToday: PlankSession | null;
+  /** The most recent attempt overall — for "fell short" messaging. */
+  lastAttempt: PlankSession | null;
+  /** Attempt streak: consecutive local days with any logged session (see
+   *  lib/analytics.attemptStreak). Only a fully skipped day breaks it. */
+  currentStreak: number;
+  longestStreak: number;
+}
+
 // ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────
 
 /** One day's log: how many new cards were studied on that date. */

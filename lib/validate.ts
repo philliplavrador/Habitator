@@ -7,9 +7,11 @@ import {
   todayISO,
 } from './dates';
 import { normalizeSchedule } from './schedule';
+import { plankProgramDays } from './plankFormat';
 import type {
   AnkiDayInput,
   HabitInput,
+  PlankProgramInput,
   RepProgramInput,
   StartFastInput,
   UpdateFastInput,
@@ -333,6 +335,88 @@ export function parseRepProgramEdit(
     };
   }
   return { ok: true, value: { name, rest_seconds } };
+}
+
+// ── Plank programs ──────────────────────────────────────────────────
+
+const MAX_PLANK_TARGET = 7200; // 2h — an absurdly long single hold; fat-finger guard
+const MAX_PLANK_STEP = 3600; // adding up to an hour a day is already extreme
+const MAX_PLANK_LASTED = 86_400; // a full day — generous bound for a logged hold
+const MAX_PLANK_PROGRAM_DAYS = 2000; // matches the rep-program ceiling
+
+/**
+ * Validate a NEW plank program's config: name + a hold-time ramp (start, end,
+ * step, all whole seconds). `end` must be at least `start`; the derived program
+ * length (start→end by step) must be within the same 2000-day ceiling as rep
+ * programs so a tiny step over a wide range can't create an endless program.
+ */
+export function parsePlankProgramInput(
+  body: unknown
+): ParseResult<PlankProgramInput> {
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
+
+  const name = asString(b.name).trim();
+  if (name.length === 0) return { ok: false, error: 'Name is required.' };
+  if (name.length > 200) return { ok: false, error: 'Name is too long.' };
+
+  const start_seconds = coerceInt(b.start_seconds, 1, MAX_PLANK_TARGET);
+  if (start_seconds === null) {
+    return {
+      ok: false,
+      error: `Start time must be a whole number of seconds 1–${MAX_PLANK_TARGET}.`,
+    };
+  }
+  const end_seconds = coerceInt(b.end_seconds, start_seconds, MAX_PLANK_TARGET);
+  if (end_seconds === null) {
+    return {
+      ok: false,
+      error: `End time must be a whole number of seconds ${start_seconds}–${MAX_PLANK_TARGET}.`,
+    };
+  }
+  const step_seconds = coerceInt(b.step_seconds, 1, MAX_PLANK_STEP);
+  if (step_seconds === null) {
+    return {
+      ok: false,
+      error: `Increase must be a whole number of seconds 1–${MAX_PLANK_STEP}.`,
+    };
+  }
+
+  const days = plankProgramDays(start_seconds, end_seconds, step_seconds);
+  if (days > MAX_PLANK_PROGRAM_DAYS) {
+    return {
+      ok: false,
+      error: `That's ${days.toLocaleString()} days — the most is ${MAX_PLANK_PROGRAM_DAYS.toLocaleString()}. Start higher, aim lower, or increase by more.`,
+    };
+  }
+
+  return { ok: true, value: { name, start_seconds, end_seconds, step_seconds } };
+}
+
+/** Validate an EDIT to a plank program — only name (the ramp is frozen). */
+export function parsePlankProgramEdit(
+  body: unknown
+): ParseResult<{ name: string }> {
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
+  const name = asString(b.name).trim();
+  if (name.length === 0) return { ok: false, error: 'Name is required.' };
+  if (name.length > 200) return { ok: false, error: 'Name is too long.' };
+  return { ok: true, value: { name } };
+}
+
+/** Validate a logged hold: a non-negative whole-second `lasted` within bounds. */
+export function parsePlankLasted(body: unknown): ParseResult<number> {
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
+  const lasted = coerceInt(b.lasted, 0, MAX_PLANK_LASTED);
+  if (lasted === null) {
+    return {
+      ok: false,
+      error: `Time lasted must be a whole number of seconds 0–${MAX_PLANK_LASTED}.`,
+    };
+  }
+  return { ok: true, value: lasted };
 }
 
 // ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────
