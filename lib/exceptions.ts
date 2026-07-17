@@ -53,23 +53,22 @@ export async function listExceptionDetails(
 }
 
 /**
- * All habit exceptions on ONE date, keyed by habit id → reason. Powers the Today
- * screen: a habit excused for the selected day drops out of the "to do" list.
+ * Every exception on ONE date across ALL trackers, keyed by `"${scope}:${ref}"`
+ * → reason. Powers the Today screen: a habit OR custom habit excused for the
+ * selected day drops out of the "to do" list. One query covers plain habits
+ * (`habit:<id>`) and custom habits (`rep:<key>` / `plank:<key>` / `anki:japanese`).
  */
-export async function listHabitExceptionsForDate(
+export async function listExceptionsForDate(
   userId: number,
   date: string
-): Promise<Map<number, string | null>> {
-  const rows = await many<{ ref: string; reason: string | null }>(
-    `SELECT ref, reason FROM streak_exceptions
-     WHERE user_id = $1 AND scope = 'habit' AND date = $2`,
+): Promise<Map<string, string | null>> {
+  const rows = await many<{ scope: string; ref: string; reason: string | null }>(
+    `SELECT scope, ref, reason FROM streak_exceptions
+     WHERE user_id = $1 AND date = $2`,
     [userId, date]
   );
-  const map = new Map<number, string | null>();
-  for (const r of rows) {
-    const id = Number(r.ref);
-    if (Number.isInteger(id)) map.set(id, r.reason);
-  }
+  const map = new Map<string, string | null>();
+  for (const r of rows) map.set(`${r.scope}:${r.ref}`, r.reason);
   return map;
 }
 

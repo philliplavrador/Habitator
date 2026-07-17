@@ -1,5 +1,7 @@
 import DeleteWidgetButton from './DeleteWidgetButton';
+import RestWidgetButton from './RestWidgetButton';
 import SummaryCard from './SummaryCard';
+import { formatHuman } from '@/lib/dates';
 import type { RepProgramState } from '@/lib/types';
 
 /**
@@ -11,10 +13,19 @@ import type { RepProgramState } from '@/lib/types';
 export default function RepProgramSummary({
   state,
   deleteEndpoint,
+  today,
+  restedToday = false,
+  restReason,
 }: {
   state: RepProgramState;
   /** When set, the card shows a delete button wired to this endpoint. */
   deleteEndpoint?: string;
+  /** The Today screen's day — the day a rest button excuses. */
+  today: string;
+  /** Whether this program is excused (a rest day) for `today`. */
+  restedToday?: boolean;
+  /** The excuse note, if any. */
+  restReason?: string | null;
 }) {
   const pct = (state.completedCount / state.programDays) * 100;
   const done = state.doneToday !== null;
@@ -25,10 +36,22 @@ export default function RepProgramSummary({
       href={state.href}
       pct={pct}
       complete={state.programComplete}
+      rested={restedToday}
+      restReason={restReason}
       action={
-        deleteEndpoint ? (
-          <DeleteWidgetButton label={state.label} endpoint={deleteEndpoint} />
-        ) : null
+        <>
+          <RestWidgetButton
+            scope="rep"
+            refId={state.key}
+            date={today}
+            dateLabel={formatHuman(today)}
+            restedToday={restedToday}
+            label={state.label}
+          />
+          {deleteEndpoint ? (
+            <DeleteWidgetButton label={state.label} endpoint={deleteEndpoint} />
+          ) : null}
+        </>
       }
       aside={
         state.currentStreak > 0 ? (

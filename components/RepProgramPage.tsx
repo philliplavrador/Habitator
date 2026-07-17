@@ -114,19 +114,6 @@ export default async function RepProgramPage({
             </section>
           )}
 
-          <section className="rounded-card border border-border bg-surface p-4 shadow-card">
-            <h2 className="mb-3 text-sm font-semibold text-text-secondary">
-              Rest days
-            </h2>
-            <RestDayEditor
-              scope="rep"
-              refId={state.key}
-              initialExceptions={state.exceptions}
-              startDate={heatmap.startDate ?? today}
-              today={today}
-            />
-          </section>
-
           <ChartCard title="Reps per session" subtitle="Total reps vs target">
             <LineTrend
               data={volume}
@@ -142,6 +129,21 @@ export default async function RepProgramPage({
           </ChartCard>
         </section>
       )}
+
+      {/* Rest days — always available (even before the first session) so a rest
+          day can be marked whenever, matching the Anki screen. */}
+      <section className="mt-4 rounded-card border border-border bg-surface p-4 shadow-card">
+        <h2 className="mb-3 text-sm font-semibold text-text-secondary">
+          Rest days
+        </h2>
+        <RestDayEditor
+          scope="rep"
+          refId={state.key}
+          initialExceptions={state.exceptions}
+          startDate={heatmap.startDate ?? today}
+          today={today}
+        />
+      </section>
 
       <RepProgramHistory basePath={state.basePath} sessions={sessions} />
 

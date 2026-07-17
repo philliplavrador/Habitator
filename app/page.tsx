@@ -7,7 +7,7 @@ import AnkiSummary from '@/components/AnkiSummary';
 import AccountMenu from '@/components/AccountMenu';
 import { listActiveHabits } from '@/lib/habits';
 import { statusMapForDate, listEntriesForDateRange } from '@/lib/entries';
-import { listHabitExceptionsForDate } from '@/lib/exceptions';
+import { listExceptionsForDate } from '@/lib/exceptions';
 import { getCurrentStreaksBatch } from '@/lib/stats';
 import { isDueOn, weekStartOf } from '@/lib/schedule';
 import { getPushupState } from '@/lib/pushups';
@@ -59,8 +59,10 @@ export default async function TodayPage({
   ] =
     await Promise.all([
       statusMapForDate(userId, selected),
-      // Habits excused for the selected day — they drop out of the "to do" list.
-      listHabitExceptionsForDate(userId, selected),
+      // Every tracker excused for the selected day, keyed `"${scope}:${ref}"` →
+      // reason. Habits and custom habits alike drop out of the "to do" list when
+      // excused. Keys: `habit:<id>`, `rep:<key>`, `plank:<key>`, `anki:japanese`.
+      listExceptionsForDate(userId, selected),
       listActiveHabits(userId),
       // Pushups/pullups/japanese are opt-in custom habits — nothing is created
       // with the account, so a widget exists only for a domain this user added.
@@ -116,8 +118,8 @@ export default async function TodayPage({
       habit.schedule.kind === 'weekly'
         ? { done: weeklyDone.get(habit.id) ?? 0, target: habit.schedule.count }
         : undefined,
-    excepted: exceptionMap.has(habit.id),
-    exceptionReason: exceptionMap.get(habit.id) ?? null,
+    excepted: exceptionMap.has(`habit:${habit.id}`),
+    exceptionReason: exceptionMap.get(`habit:${habit.id}`) ?? null,
   }));
 
   const prevDate = addDays(selected, -1);
@@ -133,44 +135,94 @@ export default async function TodayPage({
   // Each widget also carries a `deleteEndpoint` — a custom habit is deletable
   // from Today like any other habit. Built-in domains delete via /api/domains/*;
   // a user rep program deletes via its own /api/rep-programs/<id> (= basePath).
+  // A custom habit excused for today reads as done: it sinks into the Completed
+  // zone (`completed`) and its widget renders the rest-day state. Keyed by the
+  // same `"${scope}:${ref}"` as the exception rows.
+  const restedRep = (key: string) => exceptionMap.has(`rep:${key}`);
+  const restedPlank = (key: string) => exceptionMap.has(`plank:${key}`);
+  const ankiRested = exceptionMap.has('anki:japanese');
+  const ankiReason = exceptionMap.get('anki:japanese') ?? null;
+
   const widgets: WidgetItem[] = [];
   if (pushupState) {
+    const rested = restedRep(pushupState.key);
     widgets.push({
       key: 'pushups',
-      completed: pushupState.programComplete || pushupState.doneToday !== null,
+      completed:
+        pushupState.programComplete || pushupState.doneToday !== null || rested,
       node: (
-        <RepProgramSummary state={pushupState} deleteEndpoint="/api/domains/pushups" />
+        <RepProgramSummary
+          state={pushupState}
+          deleteEndpoint="/api/domains/pushups"
+          today={selected}
+          restedToday={rested}
+          restReason={exceptionMap.get(`rep:${pushupState.key}`) ?? null}
+        />
       ),
     });
   }
   if (pullupState) {
+    const rested = restedRep(pullupState.key);
     widgets.push({
       key: 'pullups',
-      completed: pullupState.programComplete || pullupState.doneToday !== null,
+      completed:
+        pullupState.programComplete || pullupState.doneToday !== null || rested,
       node: (
-        <RepProgramSummary state={pullupState} deleteEndpoint="/api/domains/pullups" />
+        <RepProgramSummary
+          state={pullupState}
+          deleteEndpoint="/api/domains/pullups"
+          today={selected}
+          restedToday={rested}
+          restReason={exceptionMap.get(`rep:${pullupState.key}`) ?? null}
+        />
       ),
     });
   }
   for (const s of userRepStates) {
+    const rested = restedRep(s.key);
     widgets.push({
       key: s.basePath,
-      completed: s.programComplete || s.doneToday !== null,
-      node: <RepProgramSummary state={s} deleteEndpoint={s.basePath} />,
+      completed: s.programComplete || s.doneToday !== null || rested,
+      node: (
+        <RepProgramSummary
+          state={s}
+          deleteEndpoint={s.basePath}
+          today={selected}
+          restedToday={rested}
+          restReason={exceptionMap.get(`rep:${s.key}`) ?? null}
+        />
+      ),
     });
   }
   for (const s of userPlankStates) {
+    const rested = restedPlank(s.key);
     widgets.push({
       key: s.basePath,
-      completed: s.programComplete || s.doneToday !== null,
-      node: <PlankProgramSummary state={s} deleteEndpoint={s.basePath} />,
+      completed: s.programComplete || s.doneToday !== null || rested,
+      node: (
+        <PlankProgramSummary
+          state={s}
+          deleteEndpoint={s.basePath}
+          today={selected}
+          restedToday={rested}
+          restReason={exceptionMap.get(`plank:${s.key}`) ?? null}
+        />
+      ),
     });
   }
   if (ankiState) {
     widgets.push({
       key: 'japanese',
-      completed: ankiState.goalReached || ankiState.loggedToday,
-      node: <AnkiSummary state={ankiState} deleteEndpoint="/api/domains/japanese" />,
+      completed: ankiState.goalReached || ankiState.loggedToday || ankiRested,
+      node: (
+        <AnkiSummary
+          state={ankiState}
+          deleteEndpoint="/api/domains/japanese"
+          today={selected}
+          restedToday={ankiRested}
+          restReason={ankiReason}
+        />
+      ),
     });
   }
 

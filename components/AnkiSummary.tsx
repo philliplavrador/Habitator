@@ -1,5 +1,7 @@
 import DeleteWidgetButton from './DeleteWidgetButton';
+import RestWidgetButton from './RestWidgetButton';
 import SummaryCard from './SummaryCard';
+import { formatHuman } from '@/lib/dates';
 import type { AnkiState } from '@/lib/types';
 
 /**
@@ -10,10 +12,19 @@ import type { AnkiState } from '@/lib/types';
 export default function AnkiSummary({
   state,
   deleteEndpoint,
+  today,
+  restedToday = false,
+  restReason,
 }: {
   state: AnkiState;
   /** When set, the card shows a delete button wired to this endpoint. */
   deleteEndpoint?: string;
+  /** The Today screen's day — the day a rest button excuses. */
+  today: string;
+  /** Whether the deck is excused (a rest day) for `today`. */
+  restedToday?: boolean;
+  /** The excuse note, if any. */
+  restReason?: string | null;
 }) {
   const paceAhead = state.paceDeltaCards >= 0;
 
@@ -23,10 +34,22 @@ export default function AnkiSummary({
       href="/japanese"
       pct={state.cardsPct * 100}
       complete={state.goalReached}
+      rested={restedToday}
+      restReason={restReason}
       action={
-        deleteEndpoint ? (
-          <DeleteWidgetButton label="Japanese" endpoint={deleteEndpoint} />
-        ) : null
+        <>
+          <RestWidgetButton
+            scope="anki"
+            refId="japanese"
+            date={today}
+            dateLabel={formatHuman(today)}
+            restedToday={restedToday}
+            label="Japanese"
+          />
+          {deleteEndpoint ? (
+            <DeleteWidgetButton label="Japanese" endpoint={deleteEndpoint} />
+          ) : null}
+        </>
       }
     >
       {state.goalReached ? (

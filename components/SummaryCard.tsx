@@ -18,11 +18,18 @@ interface Props {
   /** Extra footer-right content shown before the "Open →" link. */
   aside?: ReactNode;
   /**
-   * Corner control (e.g. delete). Rendered as a SIBLING of the card's `<Link>`,
-   * overlaid top-right — a button nested inside an anchor is invalid HTML and
-   * would navigate on tap. The header reserves room for it via `pr-8`.
+   * Corner control(s) (e.g. rest + delete). Rendered as a SIBLING of the card's
+   * `<Link>`, overlaid top-right — a button nested inside an anchor is invalid
+   * HTML and would navigate on tap. The header reserves room via `pr-16`.
    */
   action?: ReactNode;
+  /**
+   * Excused for the day: the card reads as a rest day (neon-pink badge, its
+   * footer replaced by the excused note) and sinks into the Completed zone.
+   */
+  rested?: boolean;
+  /** Optional note shown on the excused footer. */
+  restReason?: string | null;
   /** Footer-left content. */
   children: ReactNode;
 }
@@ -42,6 +49,8 @@ export default function SummaryCard({
   completeBadge = 'Complete 🎉',
   aside,
   action,
+  rested = false,
+  restReason,
   children,
 }: Props) {
   return (
@@ -51,26 +60,45 @@ export default function SummaryCard({
         className="block rounded-card border border-border bg-surface p-4 shadow-card transition-colors active:bg-surface2"
       >
         <div
-          className={`mb-3 flex items-baseline justify-between ${action ? 'pr-8' : ''}`}
+          className={`mb-3 flex items-baseline justify-between ${action ? 'pr-20' : ''}`}
         >
           <h2 className="font-display text-base font-bold text-text-primary">{title}</h2>
-          <span className="text-xs font-semibold text-accent-400">
-            {complete ? completeBadge : badge ?? `${Math.floor(pct)}%`}
+          <span
+            className={`text-xs font-semibold ${rested ? 'text-exception' : 'text-accent-400'}`}
+          >
+            {rested
+              ? 'Rest day'
+              : complete
+                ? completeBadge
+                : badge ?? `${Math.floor(pct)}%`}
           </span>
         </div>
 
-        <ProgressBar value={pct / 100} tone={complete ? 'pass' : 'accent'} />
+        <ProgressBar
+          value={pct / 100}
+          tone={rested ? 'accent' : complete ? 'pass' : 'accent'}
+        />
 
         <div className="mt-2 flex items-center justify-between text-xs">
-          {children}
+          {rested ? (
+            <span className="font-medium text-exception">
+              ◆ Rest day{restReason ? ` — ${restReason}` : ''}
+            </span>
+          ) : (
+            children
+          )}
           <span className="flex items-center gap-2">
-            {aside}
+            {!rested && aside}
             <span className="font-semibold text-accent-400">Open →</span>
           </span>
         </div>
       </Link>
 
-      {action && <div className="absolute right-2.5 top-2.5">{action}</div>}
+      {action && (
+        <div className="absolute right-2.5 top-2.5 flex items-center gap-1">
+          {action}
+        </div>
+      )}
     </div>
   );
 }
