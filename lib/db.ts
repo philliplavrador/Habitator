@@ -251,6 +251,10 @@ CREATE TABLE IF NOT EXISTS streak_exceptions (
 );
 CREATE INDEX IF NOT EXISTS idx_streak_exc_lookup
   ON streak_exceptions (user_id, scope, ref);
+-- Optional free-text note on WHY a day was excused (prompted in the UI). Added
+-- via a guarded ALTER because the table above already exists in prod — a bare
+-- CREATE TABLE IF NOT EXISTS never alters it. Nullable, so old rows stay valid.
+ALTER TABLE streak_exceptions ADD COLUMN IF NOT EXISTS reason TEXT;
 `;
 
 // Backfill the custom-habit opt-in for users who predate `user_domains`: if you

@@ -107,6 +107,7 @@ export default async function RepProgramPage({
               </h2>
               <SessionHeatmap
                 statusByDate={heatmap.statusByDate}
+                exceptions={state.exceptions}
                 startDate={heatmap.startDate}
                 today={today}
               />

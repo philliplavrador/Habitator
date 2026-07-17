@@ -73,6 +73,10 @@ export interface HabitDayView {
   currentStreak: number;
   /** Only present for `weekly` habits: this week's completions vs. target. */
   weekly?: WeeklyProgress;
+  /** This day is a marked rest-day exception — excused, drops out of "to do". */
+  excepted?: boolean;
+  /** Optional note on why the day was excused (shown on the row). */
+  exceptionReason?: string | null;
 }
 
 /** Input accepted when creating/updating a habit. */

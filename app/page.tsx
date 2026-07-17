@@ -7,6 +7,7 @@ import AnkiSummary from '@/components/AnkiSummary';
 import AccountMenu from '@/components/AccountMenu';
 import { listActiveHabits } from '@/lib/habits';
 import { statusMapForDate, listEntriesForDateRange } from '@/lib/entries';
+import { listHabitExceptionsForDate } from '@/lib/exceptions';
 import { getCurrentStreaksBatch } from '@/lib/stats';
 import { isDueOn, weekStartOf } from '@/lib/schedule';
 import { getPushupState } from '@/lib/pushups';
@@ -47,9 +48,19 @@ export default async function TodayPage({
   // Wave 1 — reads that don't depend on the habit list. `statusMap` and the
   // active-habit list come back together; the "today-only" reads (user_domains,
   // user rep-program states, user plank-program states) are gated to the current day.
-  const [statusMap, allHabits, domainsList, userRepStates, userPlankStates, username] =
+  const [
+    statusMap,
+    exceptionMap,
+    allHabits,
+    domainsList,
+    userRepStates,
+    userPlankStates,
+    username,
+  ] =
     await Promise.all([
       statusMapForDate(userId, selected),
+      // Habits excused for the selected day — they drop out of the "to do" list.
+      listHabitExceptionsForDate(userId, selected),
       listActiveHabits(userId),
       // Pushups/pullups/japanese are opt-in custom habits — nothing is created
       // with the account, so a widget exists only for a domain this user added.
@@ -105,6 +116,8 @@ export default async function TodayPage({
       habit.schedule.kind === 'weekly'
         ? { done: weeklyDone.get(habit.id) ?? 0, target: habit.schedule.count }
         : undefined,
+    excepted: exceptionMap.has(habit.id),
+    exceptionReason: exceptionMap.get(habit.id) ?? null,
   }));
 
   const prevDate = addDays(selected, -1);

@@ -6,6 +6,8 @@ import type { EntryStatus, HabitKind, Schedule } from '@/lib/types';
 interface Props {
   /** date (YYYY-MM-DD) → status, for this habit. */
   statusByDate: Record<string, EntryStatus>;
+  /** Dates (YYYY-MM-DD) marked as rest-day exceptions — rendered neon pink. */
+  exceptions?: string[];
   startDate: string;
   /** Optional end date (YYYY-MM-DD); days after it render faint ("after range"). */
   endDate?: string | null;
@@ -22,6 +24,7 @@ interface Props {
 const KIND_CLASS: Record<string, string> = {
   pass: 'bg-pass',
   fail: 'bg-fail',
+  exception: 'bg-exception',
   blank: 'bg-surface2',
   off: 'bg-surface2/30',
   before: 'bg-surface2/30',
@@ -42,6 +45,7 @@ const KIND_CLASS: Record<string, string> = {
  */
 export default function Heatmap({
   statusByDate,
+  exceptions = [],
   startDate,
   endDate = null,
   today,
@@ -55,28 +59,39 @@ export default function Heatmap({
   const isStrictScheduled =
     !isQuit && (schedule.kind === 'weekdays' || schedule.kind === 'interval');
 
+  const exceptionSet = new Set(exceptions);
+  // A rest-day exception wins over every other classification — it's the excused
+  // state, so it shows neon pink instead of a miss/blank/pass.
+  const withException =
+    (base: (date: string) => string) =>
+    (date: string): string =>
+      exceptionSet.has(date) ? 'exception' : base(date);
+
   let classify: (date: string) => string;
   if (isQuit) {
-    classify = (date) => (statusByDate[date] === 'fail' ? 'fail' : 'pass');
+    classify = withException((date) =>
+      statusByDate[date] === 'fail' ? 'fail' : 'pass'
+    );
   } else if (isStrictScheduled) {
-    classify = (date) => {
+    classify = withException((date) => {
       if (!isDueOn(schedule, startDate, date)) return 'off';
       const st = statusByDate[date];
       if (st === 'pass') return 'pass';
       if (st === 'fail') return 'fail';
       return date === today ? 'blank' : 'fail'; // past due day left blank = miss
-    };
+    });
   } else {
-    classify = (date) => statusByDate[date] ?? 'blank';
+    classify = withException((date) => statusByDate[date] ?? 'blank');
   }
 
   const kindLabel: Record<string, string> = isQuit
-    ? { pass: 'clean', fail: 'slip' }
+    ? { pass: 'clean', fail: 'slip', exception: 'rest day' }
     : isStrictScheduled
-      ? { pass: 'done', fail: 'miss', off: 'off' }
-      : { pass: 'pass', fail: 'fail' };
+      ? { pass: 'done', fail: 'miss', off: 'off', exception: 'rest day' }
+      : { pass: 'pass', fail: 'fail', exception: 'rest day' };
   const posLabel = isQuit ? 'clean' : isStrictScheduled ? 'done' : 'pass';
   const negLabel = isQuit ? 'slip' : isStrictScheduled ? 'miss' : 'fail';
+  const hasExceptions = exceptionSet.size > 0;
 
   return (
     <ContributionGrid
@@ -99,6 +114,11 @@ export default function Heatmap({
             <span className="flex items-center gap-1">
               <span className="h-3 w-3 rounded-[3px] bg-fail" /> {negLabel}
             </span>
+            {hasExceptions && (
+              <span className="flex items-center gap-1">
+                <span className="h-3 w-3 rounded-[3px] bg-exception" /> rest
+              </span>
+            )}
           </span>
         </div>
       )}

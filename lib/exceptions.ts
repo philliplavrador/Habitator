@@ -28,6 +28,51 @@ export async function listExceptions(
   return rows.map((r) => r.date);
 }
 
+/** One excepted date and its (optional) reason. */
+export interface ExceptionDetail {
+  date: string;
+  reason: string | null;
+}
+
+/**
+ * The excepted dates for one tracker WITH their reasons, ascending. Used by the
+ * UIs (calendar / rest-day editor) that show the note or pre-fill it when
+ * re-marking; the streak walks only need the dates (`listExceptions`).
+ */
+export async function listExceptionDetails(
+  userId: number,
+  scope: ExceptionScope,
+  ref: string
+): Promise<ExceptionDetail[]> {
+  return many<ExceptionDetail>(
+    `SELECT date, reason FROM streak_exceptions
+     WHERE user_id = $1 AND scope = $2 AND ref = $3
+     ORDER BY date ASC`,
+    [userId, scope, ref]
+  );
+}
+
+/**
+ * All habit exceptions on ONE date, keyed by habit id → reason. Powers the Today
+ * screen: a habit excused for the selected day drops out of the "to do" list.
+ */
+export async function listHabitExceptionsForDate(
+  userId: number,
+  date: string
+): Promise<Map<number, string | null>> {
+  const rows = await many<{ ref: string; reason: string | null }>(
+    `SELECT ref, reason FROM streak_exceptions
+     WHERE user_id = $1 AND scope = 'habit' AND date = $2`,
+    [userId, date]
+  );
+  const map = new Map<number, string | null>();
+  for (const r of rows) {
+    const id = Number(r.ref);
+    if (Number.isInteger(id)) map.set(id, r.reason);
+  }
+  return map;
+}
+
 /** The excepted dates for one tracker as a Set — the shape streak walks want. */
 export async function listExceptionSet(
   userId: number,
@@ -63,18 +108,23 @@ export async function listExceptionSetsForRefs(
   return map;
 }
 
-/** Mark (scope, ref, date) as an exception. Idempotent. */
+/**
+ * Mark (scope, ref, date) as an exception, with an optional reason. Idempotent
+ * on the (scope, ref, date) key; re-marking an existing day updates its reason
+ * (so editing the note in the UI sticks).
+ */
 export async function setException(
   userId: number,
   scope: ExceptionScope,
   ref: string,
-  date: string
+  date: string,
+  reason: string | null = null
 ): Promise<void> {
   await run(
-    `INSERT INTO streak_exceptions (user_id, scope, ref, date, created_at)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (user_id, scope, ref, date) DO NOTHING`,
-    [userId, scope, ref, date, new Date().toISOString()]
+    `INSERT INTO streak_exceptions (user_id, scope, ref, date, reason, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (user_id, scope, ref, date) DO UPDATE SET reason = EXCLUDED.reason`,
+    [userId, scope, ref, date, reason, new Date().toISOString()]
   );
 }
 

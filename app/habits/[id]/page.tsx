@@ -9,7 +9,7 @@ import BarBreakdown from '@/components/charts/BarBreakdown';
 import { chart, weekdayColor } from '@/components/charts/theme';
 import { loadHabitOr404 } from '@/lib/habitPage';
 import { listEntriesForHabit } from '@/lib/entries';
-import { listExceptions } from '@/lib/exceptions';
+import { listExceptionDetails } from '@/lib/exceptions';
 import { computeHabitStats, formatRate } from '@/lib/stats';
 import { requirePageContext } from '@/lib/pageContext';
 import { rollingCompletionSeries, dayOfWeekBreakdown } from '@/lib/analytics';
@@ -58,11 +58,16 @@ export default async function HabitDetailPage({
   // the stats and analytics — the habit and entries each used to be fetched
   // multiple times. Rows come back date-ascending. The exceptions (rest days)
   // load alongside so stats bridge them and the calendar can render them.
-  const [allEntries, exceptionList] = await Promise.all([
+  const [allEntries, exceptionDetails] = await Promise.all([
     listEntriesForHabit(userId, habit.id),
-    listExceptions(userId, 'habit', String(habit.id)),
+    listExceptionDetails(userId, 'habit', String(habit.id)),
   ]);
+  const exceptionList = exceptionDetails.map((e) => e.date);
   const exceptions = new Set(exceptionList);
+  const exceptionReasons: Record<string, string> = {};
+  for (const e of exceptionDetails) {
+    if (e.reason) exceptionReasons[e.date] = e.reason;
+  }
 
   const statusByDate: Record<string, EntryStatus> = {};
   for (const e of allEntries) {
@@ -170,6 +175,7 @@ export default async function HabitDetailPage({
         </h2>
         <Heatmap
           statusByDate={statusByDate}
+          exceptions={exceptionList}
           startDate={habit.start_date}
           endDate={habit.end_date}
           today={today}
@@ -187,6 +193,7 @@ export default async function HabitDetailPage({
             habitId={habit.id}
             initialStatus={statusByDate}
             initialExceptions={exceptionList}
+            initialReasons={exceptionReasons}
             startDate={habit.start_date}
             endDate={habit.end_date}
             today={today}

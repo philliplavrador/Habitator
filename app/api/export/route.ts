@@ -85,10 +85,12 @@ export async function GET() {
   // 12 added userDomains — the opt-in for the built-in custom habits
   // pushups/pullups/japanese. version 13 added the user-defined plank programs:
   // plankPrograms + plankProgramSessions. version 14 added streakExceptions — the
-  // per-tracker rest days that bridge a streak across a missed day.)
+  // per-tracker rest days that bridge a streak across a missed day. version 15
+  // added streak_exceptions.reason — the optional note on why a day was excused
+  // (SELECT * already carries it through).)
   const payload = {
     app: 'habitator',
-    version: 14,
+    version: 15,
     exportedAt: new Date().toISOString(),
     habits,
     entries,

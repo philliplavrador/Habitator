@@ -10,9 +10,20 @@ import { getCurrentUserId } from '@/lib/auth';
 import { parseId, readJson, unauthorized } from '@/lib/apiRoute';
 import { compareISO, isValidISODate, todayISO } from '@/lib/dates';
 import { getTimezone } from '@/lib/tz';
+import { getHabitFreshState } from '@/lib/stats';
+import type { Habit } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+/** Free-text reason cap — enough for a note, short enough to keep rows small. */
+const MAX_REASON = 500;
+
+function parseReason(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return t === '' ? null : t.slice(0, MAX_REASON);
+}
 
 // Streak exceptions ("rest days"): mark a specific day for a tracker so a missed
 // day doesn't break its streak. One uniform endpoint for every tracker — plain
@@ -27,6 +38,8 @@ interface ExceptionTarget {
   scope: ExceptionScope;
   ref: string;
   date: string;
+  /** Present only for scope 'habit' — lets the route return a fresh streak. */
+  habit?: Habit;
 }
 
 /**
@@ -80,7 +93,7 @@ async function resolveTarget(
         { status: 400 }
       );
     }
-    return { scope, ref: String(habitId), date };
+    return { scope, ref: String(habitId), date, habit };
   }
 
   // rep / plank / anki: user-scoped, so trust the ref (a bad one only orphans a
@@ -89,7 +102,25 @@ async function resolveTarget(
   return { scope, ref, date };
 }
 
-// POST /api/exceptions  body { scope, ref, date }  → mark a rest day
+/**
+ * For a habit target, the fresh { currentStreak, weekly } so Today can merge it
+ * in place of a router.refresh() (mirrors the entries route). Non-habit scopes
+ * refresh their own screen, so there's nothing to merge — return {}.
+ */
+async function freshFor(
+  userId: number,
+  target: ExceptionTarget
+): Promise<Record<string, unknown>> {
+  if (!target.habit) return {};
+  return getHabitFreshState(
+    userId,
+    target.habit,
+    target.date,
+    todayISO(getTimezone())
+  );
+}
+
+// POST /api/exceptions  body { scope, ref, date, reason? }  → mark a rest day
 export async function POST(req: NextRequest) {
   const userId = await getCurrentUserId();
   if (userId === null) return unauthorized();
@@ -107,8 +138,14 @@ export async function POST(req: NextRequest) {
   });
   if (target instanceof NextResponse) return target;
 
-  await setException(userId, target.scope, target.ref, target.date);
-  return NextResponse.json({ ok: true });
+  await setException(
+    userId,
+    target.scope,
+    target.ref,
+    target.date,
+    parseReason(b.reason)
+  );
+  return NextResponse.json({ ok: true, ...(await freshFor(userId, target)) });
 }
 
 // DELETE /api/exceptions?scope=..&ref=..&date=..  → clear a rest day
@@ -130,5 +167,9 @@ export async function DELETE(req: NextRequest) {
     target.ref,
     target.date
   );
-  return NextResponse.json({ ok: true, removed });
+  return NextResponse.json({
+    ok: true,
+    removed,
+    ...(await freshFor(userId, target)),
+  });
 }

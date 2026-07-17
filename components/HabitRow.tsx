@@ -10,6 +10,10 @@ interface Props {
   busy?: boolean;
   /** Called with the desired new state: 'pass', 'fail', or null to clear. */
   onSetStatus: (next: EntryStatus | null) => void;
+  /** Open the reason prompt to mark this day as a rest-day exception. */
+  onMarkException?: () => void;
+  /** Clear the rest-day exception (un-excuse this day). */
+  onClearException?: () => void;
 }
 
 const tap = { scale: 0.86 };
@@ -43,9 +47,57 @@ function RowShell({
   );
 }
 
-export default function HabitRow({ view, busy, onSetStatus }: Props) {
+export default function HabitRow({
+  view,
+  busy,
+  onSetStatus,
+  onMarkException,
+  onClearException,
+}: Props) {
   const { habit, status, currentStreak, weekly } = view;
   const href = `/habits/${habit.id}`;
+
+  // ── Rest-day exception: the day is excused, so it drops out of "to do" and
+  // shows a single neon-pink toggle to undo it. Applies to any kind. ──
+  if (view.excepted) {
+    const reason = view.exceptionReason;
+    const sub = (
+      <span className="mt-0.5 inline-block text-xs font-medium text-exception">
+        ◆ Rest day{reason ? ` — ${reason}` : ''}
+      </span>
+    );
+    return (
+      <RowShell href={href} name={habit.name} sub={sub}>
+        <m.button
+          type="button"
+          aria-label="Undo rest day"
+          aria-pressed
+          disabled={busy}
+          onClick={() => onClearException?.()}
+          whileTap={tap}
+          transition={spring}
+          className="flex h-11 items-center justify-center rounded-btn border border-exception bg-exception px-3 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          Rest
+        </m.button>
+      </RowShell>
+    );
+  }
+
+  // A small neon-pink diamond that opens the reason prompt to excuse the day.
+  const restButton = onMarkException ? (
+    <m.button
+      type="button"
+      aria-label="Mark a rest day"
+      disabled={busy}
+      onClick={() => onMarkException()}
+      whileTap={tap}
+      transition={spring}
+      className="flex h-11 w-11 items-center justify-center rounded-btn border border-border bg-surface2 text-sm text-text-muted active:border-exception active:text-exception disabled:opacity-50"
+    >
+      ◆
+    </m.button>
+  ) : null;
 
   // ── Quit habit: clean by default; only an explicit slip fails it. ──
   if (habit.kind === 'quit') {
@@ -111,6 +163,7 @@ export default function HabitRow({ view, busy, onSetStatus }: Props) {
 
   return (
     <RowShell href={href} name={habit.name} sub={sub}>
+      {restButton}
       <m.button
         type="button"
         aria-label="Mark pass"

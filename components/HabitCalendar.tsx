@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import SegmentedControl from './ui/SegmentedControl';
 import Sheet from './ui/Sheet';
+import RestDaySheet from './RestDaySheet';
 import { useToast } from './ui/toast';
 import {
   WEEKDAY_HEADERS,
@@ -27,6 +28,8 @@ interface Props {
   initialStatus: Record<string, EntryStatus>;
   /** Dates (YYYY-MM-DD) marked as rest-day exceptions for this habit. */
   initialExceptions?: string[];
+  /** Optional date (YYYY-MM-DD) → reason, to pre-fill when editing a rest day. */
+  initialReasons?: Record<string, string>;
   startDate: string;
   /** Optional end date (YYYY-MM-DD); days after it are out of range (disabled). */
   endDate?: string | null;
@@ -51,6 +54,7 @@ export default function HabitCalendar({
   habitId,
   initialStatus,
   initialExceptions = [],
+  initialReasons = {},
   startDate,
   endDate = null,
   today,
@@ -61,6 +65,9 @@ export default function HabitCalendar({
   const ref = String(habitId);
   const router = useRouter();
   const { show } = useToast();
+  // The date whose rest-day reason prompt is open (null = closed).
+  const [reasonDate, setReasonDate] = useState<string | null>(null);
+  const [savingReason, setSavingReason] = useState(false);
   const [statuses, setStatuses] = useState<Map<string, EntryStatus>>(
     () => new Map(Object.entries(initialStatus))
   );
@@ -104,7 +111,7 @@ export default function HabitCalendar({
   const canPrev = month > startMonth;
   const canNext = month < todayMonth;
 
-  async function handleSet(date: string, choice: Choice) {
+  async function handleSet(date: string, choice: Choice, reason?: string) {
     const prevStatus = statuses.get(date) ?? null;
     const prevExc = exceptions.has(date);
     pending.current.add(date);
@@ -125,7 +132,7 @@ export default function HabitCalendar({
     try {
       if (choice === 'exception') {
         if (prevStatus) await apiClearEntry(habitId, date);
-        await apiSetException('habit', ref, date);
+        await apiSetException('habit', ref, date, reason);
       } else if (choice === 'clear') {
         if (prevStatus) await apiClearEntry(habitId, date);
         if (prevExc) await apiClearException('habit', ref, date);
@@ -216,9 +223,9 @@ export default function HabitCalendar({
 
           let tone: string;
           if (isExc)
-            // A rest day — distinct from pass/fail/blank so it reads as excused.
+            // A rest day — neon pink, matching the heatmap's excused colour.
             tone =
-              'bg-accent/15 text-accent ring-1 ring-inset ring-accent/40 active:bg-accent/25';
+              'bg-exception/20 text-exception ring-1 ring-inset ring-exception/50 active:bg-exception/30';
           else if (status === 'fail') tone = 'bg-fail text-white font-semibold';
           else if (status === 'pass') tone = 'bg-pass text-black font-semibold';
           else if (disabled) tone = 'bg-transparent text-text-faint/50';
@@ -269,12 +276,37 @@ export default function HabitCalendar({
                 ]
           }
           value={selectedStatus}
-          onChange={(v) => selected && handleSet(selected, v)}
+          onChange={(v) => {
+            if (!selected) return;
+            // Marking a rest day opens the reason prompt first; the other choices
+            // commit immediately.
+            if (v === 'exception') {
+              setReasonDate(selected);
+              setSelected(null);
+            } else {
+              handleSet(selected, v);
+            }
+          }}
         />
         <p className="mt-3 text-center text-xs text-text-muted">
           A rest day is excused — it won&apos;t count against your streak.
         </p>
       </Sheet>
+
+      <RestDaySheet
+        open={reasonDate !== null}
+        dateLabel={reasonDate ? formatHuman(reasonDate) : ''}
+        initialReason={reasonDate ? initialReasons[reasonDate] ?? '' : ''}
+        saving={savingReason}
+        onSave={async (reason) => {
+          if (!reasonDate) return;
+          setSavingReason(true);
+          await handleSet(reasonDate, 'exception', reason);
+          setSavingReason(false);
+          setReasonDate(null);
+        }}
+        onClose={() => !savingReason && setReasonDate(null)}
+      />
     </div>
   );
 }

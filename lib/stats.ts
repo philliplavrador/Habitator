@@ -4,7 +4,14 @@ import { listExceptionSet, listExceptionSetsForRefs } from './exceptions';
 import { many } from './db';
 import { addDays, compareISO, rangeDates } from './dates';
 import { isDueOn, weekStartOf } from './schedule';
-import type { Entry, EntryStatus, Habit, HabitStats, Schedule } from './types';
+import type {
+  Entry,
+  EntryStatus,
+  Habit,
+  HabitStats,
+  Schedule,
+  WeeklyProgress,
+} from './types';
 
 /** Shared empty set so exception-unaware callers allocate nothing. */
 const NO_EXCEPTIONS: ReadonlySet<string> = new Set<string>();
@@ -350,6 +357,41 @@ export async function getCurrentStreak(
   today: string
 ): Promise<number> {
   return (await getHabitStats(userId, habitId, today)).currentStreak;
+}
+
+/**
+ * The affected habit's fresh { currentStreak, weekly } after a mutation, so a
+ * write route can return it and the client merges in place of a full
+ * `router.refresh()`. Shared by the entries and exceptions routes so both stay
+ * identical: the streak is computed against the owner-tz `today` (NOT the edited
+ * `date`) and bridges the habit's exceptions; `weekly` counts `pass` entries in
+ * the week containing the edited `date`.
+ */
+export async function getHabitFreshState(
+  userId: number,
+  habit: Habit,
+  date: string,
+  today: string
+): Promise<{ currentStreak: number; weekly?: WeeklyProgress }> {
+  const [entries, exceptions] = await Promise.all([
+    listEntriesForHabitSince(userId, habit.id, habit.start_date),
+    listExceptionSet(userId, 'habit', String(habit.id)),
+  ]);
+  const currentStreak = computeHabitStats(
+    habit,
+    entries,
+    today,
+    exceptions
+  ).currentStreak;
+  let weekly: WeeklyProgress | undefined;
+  if (habit.schedule.kind === 'weekly') {
+    const wkStart = weekStartOf(date);
+    const done = entries.filter(
+      (e) => e.status === 'pass' && e.date >= wkStart && e.date <= date
+    ).length;
+    weekly = { done, target: habit.schedule.count };
+  }
+  return { currentStreak, weekly };
 }
 
 // ── Batched equivalents (Today / Insights) ──────────────────────────

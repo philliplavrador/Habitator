@@ -4,10 +4,17 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import HabitRow from './HabitRow';
 import ProgressRing from './ProgressRing';
+import RestDaySheet from './RestDaySheet';
 import CountUp from './ui/CountUp';
 import { useCelebration } from './hooks/useCelebration';
 import { useToast } from './ui/toast';
-import { apiClearEntry, apiSetEntry } from '@/lib/client';
+import {
+  apiClearEntry,
+  apiClearException,
+  apiSetEntry,
+  apiSetException,
+} from '@/lib/client';
+import { formatHuman } from '@/lib/dates';
 import type { EntryStatus, HabitDayView } from '@/lib/types';
 
 /**
@@ -60,11 +67,15 @@ function MotionRow({
   zone,
   busy,
   onSetStatus,
+  onMarkException,
+  onClearException,
 }: {
   view: HabitDayView;
   zone: 'active' | 'completed';
   busy: boolean;
   onSetStatus: (next: EntryStatus | null) => void;
+  onMarkException: () => void;
+  onClearException: () => void;
 }) {
   const rest = zone === 'completed' ? 0.7 : 1;
   return (
@@ -75,7 +86,13 @@ function MotionRow({
       exit={{ opacity: 0, scale: 0.96 }}
       transition={rowTransition}
     >
-      <HabitRow view={view} busy={busy} onSetStatus={onSetStatus} />
+      <HabitRow
+        view={view}
+        busy={busy}
+        onSetStatus={onSetStatus}
+        onMarkException={onMarkException}
+        onClearException={onClearException}
+      />
     </m.div>
   );
 }
@@ -86,6 +103,12 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   const [items, setItems] = useState<HabitDayView[]>(initialItems);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The habit whose rest-day reason prompt is open (null = closed), plus its
+  // in-flight flag.
+  const [reasonFor, setReasonFor] = useState<{ id: number; name: string } | null>(
+    null
+  );
+  const [savingReason, setSavingReason] = useState(false);
   // Completed habits are hidden by default; a scroll-down toggle reveals them so
   // the active list stays uncluttered once the day's work is checked off.
   const [showCompleted, setShowCompleted] = useState(false);
@@ -118,18 +141,26 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   // The daily ring / perfect-day count only DAILY and fixed-day (weekday/
   // interval) build habits. `weekly` habits are week-based, so they render in
   // the list but stay out of the ring (their progress is their own week line).
-  const ringItems = buildItems.filter((i) => i.habit.schedule.kind !== 'weekly');
+  // An excused (rest-day) habit is neither done nor remaining, so it's excluded
+  // from the ring entirely — it can't hold back a "perfect day".
+  const ringItems = buildItems.filter(
+    (i) => i.habit.schedule.kind !== 'weekly' && !i.excepted
+  );
   const doneCount = ringItems.filter((i) => i.status === 'pass').length;
   const total = ringItems.length;
   const progress = total > 0 ? doneCount / total : 0;
   const allDone = total > 0 && doneCount === total;
 
-  // Presentation-only split (never a source of truth): completed habits sink to
-  // a scroll-down "Completed" zone; a `fail` or untouched habit stays active.
-  // Derived from the optimistic `buildItems`, so a row leaves the active list
-  // the instant it's tapped, before the server round-trip.
-  const activeItems = buildItems.filter((i) => i.status !== 'pass');
-  const completedItems = buildItems.filter((i) => i.status === 'pass');
+  // Presentation-only split (never a source of truth): completed AND excused
+  // habits sink to a scroll-down "Completed" zone; a `fail` or untouched habit
+  // stays active. Derived from the optimistic `buildItems`, so a row leaves the
+  // active list the instant it's tapped/excused, before the server round-trip.
+  const activeItems = buildItems.filter(
+    (i) => i.status !== 'pass' && !i.excepted
+  );
+  const completedItems = buildItems.filter(
+    (i) => i.status === 'pass' || i.excepted
+  );
 
   // Custom-habit widgets mirror the same split: an unfinished domain stays in
   // the active list; a completed one sinks into the "Completed" section and
@@ -256,6 +287,100 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
     }
   }
 
+  // Merge a habit's fresh streak/weekly (from an exception mutation) in place of
+  // a router.refresh(), mirroring handleSet.
+  function mergeFresh(
+    habitId: number,
+    name: string,
+    result: { currentStreak?: number; weekly?: { done: number; target: number } }
+  ) {
+    if (result.currentStreak === undefined) return;
+    const freshStreak = result.currentStreak;
+    setItems((cur) =>
+      cur.map((i) =>
+        i.habit.id === habitId
+          ? { ...i, currentStreak: freshStreak, weekly: result.weekly }
+          : i
+      )
+    );
+    fireStreakMilestone(habitId, name, freshStreak);
+  }
+
+  // Commit a rest-day exception with its reason. Optimistically excuses the row
+  // (it leaves the "to do" list at once), then persists.
+  async function commitException(habitId: number, reason: string) {
+    if (pending.current.has(habitId)) return;
+    const target = items.find((i) => i.habit.id === habitId);
+    const name = target?.habit.name ?? '';
+    pending.current.add(habitId);
+    setItems((cur) =>
+      cur.map((i) =>
+        i.habit.id === habitId
+          ? { ...i, excepted: true, exceptionReason: reason || null }
+          : i
+      )
+    );
+    setSavingReason(true);
+    setError(null);
+    try {
+      const result = await apiSetException(
+        'habit',
+        String(habitId),
+        date,
+        reason || undefined
+      );
+      mergeFresh(habitId, name, result);
+      setReasonFor(null);
+    } catch (e) {
+      // Revert the excuse.
+      setItems((cur) =>
+        cur.map((i) =>
+          i.habit.id === habitId
+            ? { ...i, excepted: false, exceptionReason: null }
+            : i
+        )
+      );
+      setError(e instanceof Error ? e.message : 'Could not save.');
+    } finally {
+      pending.current.delete(habitId);
+      setSavingReason(false);
+    }
+  }
+
+  // Un-excuse a habit (clear its rest-day exception for this day).
+  async function clearException(habitId: number) {
+    if (pending.current.has(habitId)) return;
+    const target = items.find((i) => i.habit.id === habitId);
+    const name = target?.habit.name ?? '';
+    const prevReason = target?.exceptionReason ?? null;
+    pending.current.add(habitId);
+    setItems((cur) =>
+      cur.map((i) =>
+        i.habit.id === habitId
+          ? { ...i, excepted: false, exceptionReason: null }
+          : i
+      )
+    );
+    setBusyId(habitId);
+    setError(null);
+    try {
+      const result = await apiClearException('habit', String(habitId), date);
+      mergeFresh(habitId, name, result);
+    } catch (e) {
+      setItems((cur) =>
+        cur.map((i) =>
+          i.habit.id === habitId
+            ? { ...i, excepted: true, exceptionReason: prevReason }
+            : i
+        )
+      );
+      setError(e instanceof Error ? e.message : 'Could not save.');
+    } finally {
+      pending.current.delete(habitId);
+      setBusyId(null);
+    }
+  }
+
   return (
     <div>
       {total > 0 && (
@@ -314,6 +439,10 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                       zone="active"
                       busy={busyId === view.habit.id}
                       onSetStatus={(next) => handleSet(view.habit.id, next)}
+                      onMarkException={() =>
+                        setReasonFor({ id: view.habit.id, name: view.habit.name })
+                      }
+                      onClearException={() => clearException(view.habit.id)}
                     />
                   ))}
                 </AnimatePresence>
@@ -365,6 +494,10 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                       zone="active"
                       busy={busyId === view.habit.id}
                       onSetStatus={(next) => handleSet(view.habit.id, next)}
+                      onMarkException={() =>
+                        setReasonFor({ id: view.habit.id, name: view.habit.name })
+                      }
+                      onClearException={() => clearException(view.habit.id)}
                     />
                   ))}
                 </AnimatePresence>
@@ -428,6 +561,13 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                               zone="completed"
                               busy={busyId === view.habit.id}
                               onSetStatus={(next) => handleSet(view.habit.id, next)}
+                              onMarkException={() =>
+                                setReasonFor({
+                                  id: view.habit.id,
+                                  name: view.habit.name,
+                                })
+                              }
+                              onClearException={() => clearException(view.habit.id)}
                             />
                           ))}
                         </AnimatePresence>
@@ -456,6 +596,14 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
           )}
         </div>
       )}
+
+      <RestDaySheet
+        open={reasonFor !== null}
+        dateLabel={`${reasonFor ? reasonFor.name + ' · ' : ''}${formatHuman(date)}`}
+        saving={savingReason}
+        onSave={(reason) => reasonFor && commitException(reasonFor.id, reason)}
+        onClose={() => !savingReason && setReasonFor(null)}
+      />
     </div>
   );
 }

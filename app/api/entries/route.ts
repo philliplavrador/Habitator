@@ -1,51 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { clearEntry, listEntriesForHabitSince, setEntry } from '@/lib/entries';
-import { listExceptionSet } from '@/lib/exceptions';
+import { clearEntry, setEntry } from '@/lib/entries';
 import { getHabit } from '@/lib/habits';
 import { getCurrentUserId } from '@/lib/auth';
 import { parseId, readJson, unauthorized } from '@/lib/apiRoute';
 import { compareISO, isValidISODate, todayISO } from '@/lib/dates';
 import { getTimezone } from '@/lib/tz';
-import { computeHabitStats } from '@/lib/stats';
-import { weekStartOf } from '@/lib/schedule';
-import type { EntryStatus, Habit, WeeklyProgress } from '@/lib/types';
+import { getHabitFreshState } from '@/lib/stats';
+import type { EntryStatus } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-/**
- * Fresh { currentStreak, weekly } for one habit, so the client can merge it into
- * local state instead of a full `router.refresh()` after a check-off. Mirrors
- * app/page.tsx exactly: the streak is computed against the owner-tz `today`
- * (NOT the edited day), and `weekly` counts `pass` entries in the week
- * containing the edited `date`.
- */
-async function habitFreshState(
-  userId: number,
-  habit: Habit,
-  date: string,
-  today: string
-): Promise<{ currentStreak: number; weekly?: WeeklyProgress }> {
-  const [entries, exceptions] = await Promise.all([
-    listEntriesForHabitSince(userId, habit.id, habit.start_date),
-    listExceptionSet(userId, 'habit', String(habit.id)),
-  ]);
-  const currentStreak = computeHabitStats(
-    habit,
-    entries,
-    today,
-    exceptions
-  ).currentStreak;
-  let weekly: WeeklyProgress | undefined;
-  if (habit.schedule.kind === 'weekly') {
-    const wkStart = weekStartOf(date);
-    const done = entries.filter(
-      (e) => e.status === 'pass' && e.date >= wkStart && e.date <= date
-    ).length;
-    weekly = { done, target: habit.schedule.count };
-  }
-  return { currentStreak, weekly };
-}
 
 // POST /api/entries  body { habitId, date, status }  → set pass/fail
 export async function POST(req: NextRequest) {
@@ -107,7 +71,7 @@ export async function POST(req: NextRequest) {
   const entry = await setEntry(userId, habitId, date, status);
   // Return the habit's fresh streak/weekly so the client can merge it in place
   // of a full `router.refresh()` RSC refetch. Same computation as app/page.tsx.
-  const { currentStreak, weekly } = await habitFreshState(
+  const { currentStreak, weekly } = await getHabitFreshState(
     userId,
     habit,
     date,
@@ -140,7 +104,7 @@ export async function DELETE(req: NextRequest) {
   if (!habit) {
     return NextResponse.json({ ok: true, removed });
   }
-  const { currentStreak, weekly } = await habitFreshState(
+  const { currentStreak, weekly } = await getHabitFreshState(
     userId,
     habit,
     date,

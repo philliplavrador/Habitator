@@ -43,6 +43,9 @@ const config: Config = {
         pass: { DEFAULT: '#22c55e', soft: '#16a34a' },
         fail: { DEFAULT: '#ef4444', soft: '#dc2626' },
         warn: '#f59e0b',
+        // Rest-day exception marker — a neon pink that stands apart from
+        // pass/fail/accent on the calendars and heatmaps.
+        exception: '#ff2d95',
 
         text: {
           primary: '#e8eaed',

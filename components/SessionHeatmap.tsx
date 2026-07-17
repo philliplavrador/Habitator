@@ -4,6 +4,8 @@ import type { RepDayStatus } from '@/lib/types';
 interface Props {
   /** date (YYYY-MM-DD) → outcome, for days that had a session. */
   statusByDate: Record<string, RepDayStatus>;
+  /** Dates (YYYY-MM-DD) marked as rest-day exceptions — rendered neon pink. */
+  exceptions?: string[];
   /** Earliest session date — days before it render as "not started". */
   startDate: string;
   today: string;
@@ -14,6 +16,7 @@ interface Props {
 const KIND_CLASS: Record<string, string> = {
   complete: 'bg-pass',
   attempted: 'bg-warn',
+  exception: 'bg-exception',
   skipped: 'bg-surface2',
   before: 'bg-surface2/30',
   future: 'bg-transparent',
@@ -22,6 +25,7 @@ const KIND_CLASS: Record<string, string> = {
 const KIND_LABEL: Record<string, string> = {
   complete: 'completed',
   attempted: 'attempted',
+  exception: 'rest day',
   skipped: 'skipped',
 };
 
@@ -33,10 +37,13 @@ const KIND_LABEL: Record<string, string> = {
  */
 export default function SessionHeatmap({
   statusByDate,
+  exceptions = [],
   startDate,
   today,
   weeks,
 }: Props) {
+  const exceptionSet = new Set(exceptions);
+  const hasExceptions = exceptionSet.size > 0;
   return (
     <ContributionGrid
       today={today}
@@ -46,7 +53,10 @@ export default function SessionHeatmap({
           ? { type: 'fixed', weeks }
           : { type: 'clamp', min: 9, max: 53 }
       }
-      classify={(date) => statusByDate[date] ?? 'skipped'}
+      // A rest-day exception wins over the session outcome (neon pink).
+      classify={(date) =>
+        exceptionSet.has(date) ? 'exception' : statusByDate[date] ?? 'skipped'
+      }
       kindClass={KIND_CLASS}
       kindLabel={KIND_LABEL}
       scrollX
@@ -61,6 +71,11 @@ export default function SessionHeatmap({
           <span className="flex items-center gap-1">
             <span className="h-3 w-3 rounded-[3px] bg-surface2" /> Skipped
           </span>
+          {hasExceptions && (
+            <span className="flex items-center gap-1">
+              <span className="h-3 w-3 rounded-[3px] bg-exception" /> Rest
+            </span>
+          )}
         </div>
       )}
     />

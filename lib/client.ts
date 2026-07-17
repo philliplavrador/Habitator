@@ -123,20 +123,30 @@ export async function apiClearEntry(
 export async function apiSetException(
   scope: string,
   ref: string,
-  date: string
-): Promise<void> {
-  await request('/api/exceptions', 'POST', { scope, ref, date });
+  date: string,
+  reason?: string
+): Promise<EntryMutationResult> {
+  const res = await request('/api/exceptions', 'POST', {
+    scope,
+    ref,
+    date,
+    reason,
+  });
+  const data = await res.json();
+  return { currentStreak: data.currentStreak, weekly: data.weekly };
 }
 
 export async function apiClearException(
   scope: string,
   ref: string,
   date: string
-): Promise<void> {
+): Promise<EntryMutationResult> {
   const q = `scope=${encodeURIComponent(scope)}&ref=${encodeURIComponent(
     ref
   )}&date=${encodeURIComponent(date)}`;
-  await request(`/api/exceptions?${q}`, 'DELETE');
+  const res = await request(`/api/exceptions?${q}`, 'DELETE');
+  const data = await res.json();
+  return { currentStreak: data.currentStreak, weekly: data.weekly };
 }
 
 export async function apiCreateHabit(input: HabitInput): Promise<Habit> {

@@ -104,7 +104,12 @@ shaves one off that week's target). A new streak function, or a refactor of an
 existing one, MUST thread `exceptions` through or rest days silently stop
 working. The batch (`getHabitStatsBatch`) loads them in one query alongside
 entries; rep/plank `getState` and `getAnkiStateWithDays` load them in their
-existing read wave.
+existing read wave. Each row carries an optional free-text `reason` (added by a
+guarded `ALTER`; prompted in the UI). On the Today screen a habit excused for the
+selected day is dropped from the "to do" list (`listHabitExceptionsForDate` →
+`HabitDayView.excepted`); heatmaps/calendars paint an excused day the `exception`
+neon-pink. `getHabitFreshState` (lib/stats) is the shared post-write
+`{currentStreak, weekly}` used by both the entries and exceptions routes.
 
 ### 5. Rate scale: 0..1 vs 0..100
 - `stats.ts` emits completion rates as **0..1 fractions**; `formatRate` consumes

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from './ui/toast';
+import RestDaySheet from './RestDaySheet';
 import {
   WEEKDAY_HEADERS,
   monthCells,
@@ -10,7 +11,7 @@ import {
   shiftMonth,
 } from './calendarGrid';
 import { apiClearException, apiSetException } from '@/lib/client';
-import { compareISO } from '@/lib/dates';
+import { compareISO, formatHuman } from '@/lib/dates';
 
 interface Props {
   /** Tracker scope — 'rep' | 'plank' | 'anki'. */
@@ -43,6 +44,9 @@ export default function RestDayEditor({
     () => new Set(initialExceptions)
   );
   const [month, setMonth] = useState(() => today.slice(0, 7));
+  // The date whose rest-day reason prompt is open (null = closed).
+  const [reasonDate, setReasonDate] = useState<string | null>(null);
+  const [savingReason, setSavingReason] = useState(false);
   const pending = useRef<Set<string>>(new Set());
 
   // Re-sync from the server after a write, preserving any still-in-flight day.
@@ -61,26 +65,50 @@ export default function RestDayEditor({
   const canPrev = month > startMonth;
   const canNext = month < todayMonth;
 
-  async function toggle(date: string) {
-    const wasExc = exceptions.has(date);
+  // Tapping a day: an already-excused day clears at once; a fresh day opens the
+  // reason prompt (marking a rest day always asks why).
+  function tapDay(date: string) {
+    if (exceptions.has(date)) clearDay(date);
+    else setReasonDate(date);
+  }
+
+  async function markDay(date: string, reason: string) {
     pending.current.add(date);
-    setExceptions((cur) => {
-      const next = new Set(cur);
-      if (wasExc) next.delete(date);
-      else next.add(date);
-      return next;
-    });
+    setExceptions((cur) => new Set(cur).add(date));
+    setSavingReason(true);
     try {
-      if (wasExc) await apiClearException(scope, refId, date);
-      else await apiSetException(scope, refId, date);
+      await apiSetException(scope, refId, date, reason || undefined);
       router.refresh();
+      setReasonDate(null);
     } catch (e) {
       setExceptions((cur) => {
         const next = new Set(cur);
-        if (wasExc) next.add(date);
-        else next.delete(date);
+        next.delete(date);
         return next;
       });
+      show({
+        tone: 'error',
+        title: 'Could not save',
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      pending.current.delete(date);
+      setSavingReason(false);
+    }
+  }
+
+  async function clearDay(date: string) {
+    pending.current.add(date);
+    setExceptions((cur) => {
+      const next = new Set(cur);
+      next.delete(date);
+      return next;
+    });
+    try {
+      await apiClearException(scope, refId, date);
+      router.refresh();
+    } catch (e) {
+      setExceptions((cur) => new Set(cur).add(date));
       show({
         tone: 'error',
         title: 'Could not save',
@@ -139,8 +167,9 @@ export default function RestDayEditor({
 
           let tone: string;
           if (isExc)
+            // Neon pink — matches the heatmap's excused colour.
             tone =
-              'bg-accent/15 text-accent ring-1 ring-inset ring-accent/40 active:bg-accent/25';
+              'bg-exception/20 text-exception ring-1 ring-inset ring-exception/50 active:bg-exception/30';
           else if (disabled) tone = 'bg-transparent text-text-faint/50';
           else tone = 'bg-surface2 text-text-secondary active:bg-surface3';
 
@@ -149,7 +178,7 @@ export default function RestDayEditor({
               key={date}
               type="button"
               disabled={disabled}
-              onClick={() => toggle(date)}
+              onClick={() => tapDay(date)}
               className={`flex aspect-square items-center justify-center rounded-btn text-xs transition-colors ${tone} ${
                 isToday ? 'ring-1 ring-accent' : ''
               } ${disabled ? 'cursor-default' : ''}`}
@@ -164,6 +193,14 @@ export default function RestDayEditor({
         Tap a day you couldn&apos;t train to mark it a rest day — excused days
         won&apos;t break your streak. Tap again to undo.
       </p>
+
+      <RestDaySheet
+        open={reasonDate !== null}
+        dateLabel={reasonDate ? formatHuman(reasonDate) : ''}
+        saving={savingReason}
+        onSave={(reason) => reasonDate && markDay(reasonDate, reason)}
+        onClose={() => !savingReason && setReasonDate(null)}
+      />
     </div>
   );
 }
