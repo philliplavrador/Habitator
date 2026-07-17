@@ -7,6 +7,7 @@
 // SERVER-ONLY. Every query is scoped to `userId`.
 
 import { many, one, run } from './db';
+import { deleteExceptionsForRef } from './exceptions';
 import { createPlankProgram, type PlankProgram } from './plankProgram';
 import { formatHold, plankProgramDays } from './plankFormat';
 import type {
@@ -110,12 +111,15 @@ export async function removePlankProgram(
   userId: number,
   id: number
 ): Promise<boolean> {
-  return (
+  const removed =
     (await run(`DELETE FROM plank_programs WHERE id = $1 AND user_id = $2`, [
       id,
       userId,
-    ])) > 0
-  );
+    ])) > 0;
+  // Rest days don't cascade (streak_exceptions has no FK on the ref) — clear
+  // this program's (scope 'plank', ref `plank<id>`) explicitly.
+  if (removed) await deleteExceptionsForRef(userId, 'plank', `plank${id}`);
+  return removed;
 }
 
 /**

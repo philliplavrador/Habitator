@@ -161,7 +161,11 @@ export default function RestDayEditor({
           const isExc = exceptions.has(date);
           const isFuture = compareISO(date, today) > 0;
           const isBefore = compareISO(date, startDate) < 0;
-          const disabled = isFuture || isBefore;
+          // A day before the (derived) start is normally untappable — but an
+          // already-excused one must stay clearable, or a rest day marked while
+          // start==today gets stranded once the start advances. (tapDay routes an
+          // excused day straight to clear.)
+          const disabled = isFuture || (isBefore && !isExc);
           const isToday = date === today;
           const day = Number(date.slice(8, 10));
 

@@ -1,7 +1,8 @@
 'use client';
 
 import { AnimatePresence, m } from 'framer-motion';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 
 interface Props {
@@ -17,8 +18,17 @@ interface Props {
  * A bottom sheet: backdrop + panel that slides up from the bottom on mobile.
  * Closes on Escape or backdrop tap. Used by ConfirmDialog and the habit
  * calendar day editor. Renders via AnimatePresence so exit animates too.
+ *
+ * The whole overlay is PORTALED to `document.body` so its `position: fixed`
+ * always resolves against the viewport — never a transformed ancestor. Without
+ * this, a sheet opened from inside a `framer-motion` `layout` element (e.g. a
+ * Today-screen widget mid-animation) would briefly anchor to that element's box.
  */
 export default function Sheet({ open, onClose, title, children, footer }: Props) {
+  // Portals need `document`; only mount after hydration to stay SSR-safe.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -34,7 +44,9 @@ export default function Sheet({ open, onClose, title, children, footer }: Props)
     };
   }, [open, onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <m.div
@@ -69,6 +81,7 @@ export default function Sheet({ open, onClose, title, children, footer }: Props)
           </m.div>
         </m.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

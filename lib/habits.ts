@@ -1,4 +1,5 @@
 import { many, one, run } from './db';
+import { deleteExceptionsForRef } from './exceptions';
 import { parseSchedule, serializeSchedule } from './schedule';
 import type { Habit, HabitInput } from './types';
 
@@ -115,10 +116,13 @@ export async function setHabitArchived(
 
 /** Delete a habit. Its entries cascade away via the FK. True if removed. */
 export async function deleteHabit(userId: number, id: number): Promise<boolean> {
-  return (
+  const removed =
     (await run(`DELETE FROM habits WHERE id = $1 AND user_id = $2`, [
       id,
       userId,
-    ])) > 0
-  );
+    ])) > 0;
+  // Entries cascade via the FK, but rest days don't (streak_exceptions keys the
+  // habit by a text ref, not a foreign key) — clear them explicitly.
+  if (removed) await deleteExceptionsForRef(userId, 'habit', String(id));
+  return removed;
 }

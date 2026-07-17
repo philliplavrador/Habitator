@@ -10,6 +10,7 @@
 // SERVER-ONLY. Every query is scoped to `userId`.
 
 import { many, one, run } from './db';
+import { deleteExceptionsForRef } from './exceptions';
 import { createRepProgram, targetForDay, type RepProgram } from './repProgram';
 import type {
   RepProgramConfig,
@@ -116,12 +117,15 @@ export async function removeRepProgram(
   userId: number,
   id: number
 ): Promise<boolean> {
-  return (
+  const removed =
     (await run(`DELETE FROM rep_programs WHERE id = $1 AND user_id = $2`, [
       id,
       userId,
-    ])) > 0
-  );
+    ])) > 0;
+  // Rest days don't cascade (streak_exceptions has no FK on the ref) — clear
+  // this program's (scope 'rep', ref `rep<id>`) explicitly.
+  if (removed) await deleteExceptionsForRef(userId, 'rep', `rep${id}`);
+  return removed;
 }
 
 /**

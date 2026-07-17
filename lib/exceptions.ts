@@ -127,6 +127,25 @@ export async function setException(
   );
 }
 
+/**
+ * Delete EVERY exception for one tracker — called when the tracker itself is
+ * deleted (a habit, a rep/plank program, or a built-in domain). `streak_exceptions`
+ * has no foreign key on `(scope, ref)` (the ref is a text key spanning several
+ * tables), so nothing cascades these rows away; the owner must delete them
+ * explicitly or they orphan — and, for the fixed-ref built-ins, resurrect if the
+ * domain is re-added. Scoped to the user like every query here.
+ */
+export async function deleteExceptionsForRef(
+  userId: number,
+  scope: ExceptionScope,
+  ref: string
+): Promise<void> {
+  await run(
+    `DELETE FROM streak_exceptions WHERE user_id = $1 AND scope = $2 AND ref = $3`,
+    [userId, scope, ref]
+  );
+}
+
 /** Clear an exception. Returns true if a row was removed. */
 export async function clearException(
   userId: number,

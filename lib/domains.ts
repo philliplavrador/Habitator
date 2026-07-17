@@ -38,6 +38,17 @@ const DATA_TABLE: Record<DomainKey, string> = {
 };
 
 /**
+ * The streak-exception (scope, ref) each domain owns. These are FIXED strings
+ * (not serial ids), so deleting a domain must clear them too — otherwise
+ * re-adding the domain resurrects its old rest days (see removeUserDomain).
+ */
+const DOMAIN_EXCEPTION: Record<DomainKey, { scope: string; ref: string }> = {
+  pushups: { scope: 'rep', ref: 'pushups' },
+  pullups: { scope: 'rep', ref: 'pullups' },
+  japanese: { scope: 'anki', ref: 'japanese' },
+};
+
+/**
  * One entry in the custom-habit library — the pre-built trackers a user can
  * pick from after choosing "Custom habit". Two kinds:
  *  • `reps` opens the configurable rep-program form (creates a `rep_programs`
@@ -157,6 +168,13 @@ export function removeUserDomain(
     await client.query(`DELETE FROM ${DATA_TABLE[domain]} WHERE user_id = $1`, [
       userId,
     ]);
+    // Also clear the domain's rest days — its ref is a fixed string, so leaving
+    // them would resurrect on re-add (unlike the data table, which cascades).
+    const exc = DOMAIN_EXCEPTION[domain];
+    await client.query(
+      `DELETE FROM streak_exceptions WHERE user_id = $1 AND scope = $2 AND ref = $3`,
+      [userId, exc.scope, exc.ref]
+    );
     return true;
   });
 }
