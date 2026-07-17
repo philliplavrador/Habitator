@@ -5,8 +5,19 @@ import { useRouter } from 'next/navigation';
 import SegmentedControl from './ui/SegmentedControl';
 import Sheet from './ui/Sheet';
 import { useToast } from './ui/toast';
-import { apiClearEntry, apiSetEntry } from '@/lib/client';
-import { addDays, compareISO, formatHuman, relativeLabel, weekdayOf } from '@/lib/dates';
+import {
+  WEEKDAY_HEADERS,
+  monthCells,
+  monthLabel,
+  shiftMonth,
+} from './calendarGrid';
+import {
+  apiClearEntry,
+  apiClearException,
+  apiSetEntry,
+  apiSetException,
+} from '@/lib/client';
+import { compareISO, formatHuman, relativeLabel } from '@/lib/dates';
 import { isDueOn } from '@/lib/schedule';
 import type { EntryStatus, HabitKind, Schedule } from '@/lib/types';
 
@@ -14,6 +25,8 @@ interface Props {
   habitId: number;
   /** date (YYYY-MM-DD) → status, for this habit. */
   initialStatus: Record<string, EntryStatus>;
+  /** Dates (YYYY-MM-DD) marked as rest-day exceptions for this habit. */
+  initialExceptions?: string[];
   startDate: string;
   /** Optional end date (YYYY-MM-DD); days after it are out of range (disabled). */
   endDate?: string | null;
@@ -24,51 +37,20 @@ interface Props {
   schedule?: Schedule;
 }
 
-type Choice = EntryStatus | 'clear';
-
-const WEEKDAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
-
-function shiftMonth(month: string, delta: number): string {
-  const [y, m] = month.split('-').map(Number);
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
-}
-
-function monthLabel(month: string): string {
-  const [y, m] = month.split('-').map(Number);
-  const names = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
-  return `${names[m - 1]} ${y}`;
-}
-
-/** Cells for a month grid: leading nulls for the first weekday, then each day. */
-function monthCells(month: string): (string | null)[] {
-  const [y, m] = month.split('-').map(Number);
-  // Days in `month`. `m` is 1-based (Jan=1), and JS months are 0-based, so `m`
-  // is really "next month"; day 0 of next month = the last day of `month`.
-  // (The usual -1 to convert to a 0-based index is intentionally omitted — it's
-  // what makes this land on the previous month's last day = days-in-month.)
-  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const lead = weekdayOf(`${month}-01`);
-  const cells: (string | null)[] = Array(lead).fill(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(`${month}-${pad2(d)}`);
-  return cells;
-}
+type Choice = EntryStatus | 'exception' | 'clear';
 
 /**
- * Editable month calendar. Tap any day in range to set pass/fail or clear it —
- * writing through the same /api/entries endpoints the Today screen uses.
- * Future days and days before the start date are disabled to match the API.
+ * Editable month calendar. Tap any day in range to set pass/fail, mark it as a
+ * rest-day exception, or clear it — writing through the same /api/entries and
+ * /api/exceptions endpoints the rest of the app uses. An exception excuses a
+ * missed day so it doesn't break the streak (it's stored separately from the
+ * pass/fail entry, and the two are kept mutually exclusive here). Future days and
+ * days before the start date are disabled to match the API.
  */
 export default function HabitCalendar({
   habitId,
   initialStatus,
+  initialExceptions = [],
   startDate,
   endDate = null,
   today,
@@ -76,10 +58,14 @@ export default function HabitCalendar({
   schedule = { kind: 'daily' },
 }: Props) {
   const isQuit = kind === 'quit';
+  const ref = String(habitId);
   const router = useRouter();
   const { show } = useToast();
   const [statuses, setStatuses] = useState<Map<string, EntryStatus>>(
     () => new Map(Object.entries(initialStatus))
+  );
+  const [exceptions, setExceptions] = useState<Set<string>>(
+    () => new Set(initialExceptions)
   );
   // Open on the habit's last active month when it has already ended, so an ended
   // habit doesn't land on an empty, fully-disabled current month. Otherwise today.
@@ -103,29 +89,62 @@ export default function HabitCalendar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialStatus]);
 
+  useEffect(() => {
+    const fresh = new Set(initialExceptions);
+    for (const d of pending.current) {
+      if (exceptions.has(d)) fresh.add(d);
+      else fresh.delete(d);
+    }
+    setExceptions(fresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialExceptions]);
+
   const startMonth = startDate.slice(0, 7);
   const todayMonth = today.slice(0, 7);
   const canPrev = month > startMonth;
   const canNext = month < todayMonth;
 
   async function handleSet(date: string, choice: Choice) {
-    const prev = statuses.get(date) ?? null;
+    const prevStatus = statuses.get(date) ?? null;
+    const prevExc = exceptions.has(date);
     pending.current.add(date);
+    // Optimistic local update — exception is mutually exclusive with pass/fail.
     setStatuses((cur) => {
       const next = new Map(cur);
-      if (choice === 'clear') next.delete(date);
-      else next.set(date, choice);
+      if (choice === 'pass' || choice === 'fail') next.set(date, choice);
+      else next.delete(date);
+      return next;
+    });
+    setExceptions((cur) => {
+      const next = new Set(cur);
+      if (choice === 'exception') next.add(date);
+      else next.delete(date);
       return next;
     });
     setSelected(null);
     try {
-      if (choice === 'clear') await apiClearEntry(habitId, date);
-      else await apiSetEntry(habitId, date, choice);
+      if (choice === 'exception') {
+        if (prevStatus) await apiClearEntry(habitId, date);
+        await apiSetException('habit', ref, date);
+      } else if (choice === 'clear') {
+        if (prevStatus) await apiClearEntry(habitId, date);
+        if (prevExc) await apiClearException('habit', ref, date);
+      } else {
+        if (prevExc) await apiClearException('habit', ref, date);
+        await apiSetEntry(habitId, date, choice);
+      }
       router.refresh();
     } catch (e) {
+      // Roll both back to their pre-tap values.
       setStatuses((cur) => {
         const next = new Map(cur);
-        if (prev) next.set(date, prev);
+        if (prevStatus) next.set(date, prevStatus);
+        else next.delete(date);
+        return next;
+      });
+      setExceptions((cur) => {
+        const next = new Set(cur);
+        if (prevExc) next.add(date);
         else next.delete(date);
         return next;
       });
@@ -141,7 +160,9 @@ export default function HabitCalendar({
 
   const cells = monthCells(month);
   const selectedStatus: Choice = selected
-    ? (statuses.get(selected) ?? 'clear')
+    ? exceptions.has(selected)
+      ? 'exception'
+      : (statuses.get(selected) ?? 'clear')
     : 'clear';
 
   return (
@@ -182,6 +203,7 @@ export default function HabitCalendar({
         {cells.map((date, i) => {
           if (date === null) return <div key={`e${i}`} />;
           const status = statuses.get(date);
+          const isExc = exceptions.has(date);
           const isFuture = compareISO(date, today) > 0;
           const isBefore = compareISO(date, startDate) < 0;
           const isAfterEnd = endDate !== null && compareISO(date, endDate) > 0;
@@ -193,7 +215,11 @@ export default function HabitCalendar({
           const day = Number(date.slice(8, 10));
 
           let tone: string;
-          if (status === 'fail') tone = 'bg-fail text-white font-semibold';
+          if (isExc)
+            // A rest day — distinct from pass/fail/blank so it reads as excused.
+            tone =
+              'bg-accent/15 text-accent ring-1 ring-inset ring-accent/40 active:bg-accent/25';
+          else if (status === 'fail') tone = 'bg-fail text-white font-semibold';
           else if (status === 'pass') tone = 'bg-pass text-black font-semibold';
           else if (disabled) tone = 'bg-transparent text-text-faint/50';
           // For a quit habit, an in-range blank day is a clean win, so tint it
@@ -233,16 +259,21 @@ export default function HabitCalendar({
               ? [
                   { value: 'fail', label: '✗ Slipped' },
                   { value: 'clear', label: '✓ Clean' },
+                  { value: 'exception', label: '◆ Rest' },
                 ]
               : [
                   { value: 'pass', label: '✓ Pass' },
                   { value: 'fail', label: '✗ Fail' },
+                  { value: 'exception', label: '◆ Rest' },
                   { value: 'clear', label: 'Clear' },
                 ]
           }
           value={selectedStatus}
           onChange={(v) => selected && handleSet(selected, v)}
         />
+        <p className="mt-3 text-center text-xs text-text-muted">
+          A rest day is excused — it won&apos;t count against your streak.
+        </p>
       </Sheet>
     </div>
   );

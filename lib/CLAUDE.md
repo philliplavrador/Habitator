@@ -93,6 +93,19 @@ verbatim:
   logged-below-min today breaks immediately.
 Don't unify them — the semantics are intentionally distinct.
 
+**Streak exceptions (rest days) cut across all three.** `streak_exceptions`
+(`lib/exceptions.ts`, keyed by `(scope, ref)` — see the table note in `db.ts`)
+lets a user excuse a missed day so it doesn't break a streak. Every streak
+computation takes an optional `exceptions: ReadonlySet<string>` and treats an
+excepted date as **bridged**: it neither breaks nor extends the run (in the
+calendar-day walks it's `continue`d like an off day; in the list-position
+`computeStats` the excepted entry is filtered out; in `weekly` each exception
+shaves one off that week's target). A new streak function, or a refactor of an
+existing one, MUST thread `exceptions` through or rest days silently stop
+working. The batch (`getHabitStatsBatch`) loads them in one query alongside
+entries; rep/plank `getState` and `getAnkiStateWithDays` load them in their
+existing read wave.
+
 ### 5. Rate scale: 0..1 vs 0..100
 - `stats.ts` emits completion rates as **0..1 fractions**; `formatRate` consumes
   0..1.

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import AnkiLogCard from '@/components/AnkiLogCard';
 import AnkiHistory from '@/components/AnkiHistory';
+import RestDayEditor from '@/components/RestDayEditor';
 import ProgressBar from '@/components/ProgressBar';
 import Card from '@/components/ui/Card';
 import StatTile from '@/components/ui/StatTile';
@@ -25,7 +26,7 @@ export default async function JapanesePage() {
   // One ascending read of anki_days feeds both the computed state and the
   // history view. `days` is that list reversed to newest-first — identical to
   // listAnkiDays' `ORDER BY date DESC`, since anki_days holds one row per date.
-  const { state, daysAsc } = await getAnkiStateWithDays(userId, tz);
+  const { state, daysAsc, exceptions } = await getAnkiStateWithDays(userId, tz);
   const days = [...daysAsc].reverse();
   const series = ankiCumulativeSeries(
     days,
@@ -87,6 +88,19 @@ export default async function JapanesePage() {
           </ChartCard>
         </section>
       )}
+
+      <section className="mt-6 rounded-card border border-border bg-surface p-4 shadow-card">
+        <h2 className="mb-3 text-sm font-semibold text-text-secondary">
+          Rest days
+        </h2>
+        <RestDayEditor
+          scope="anki"
+          refId="japanese"
+          initialExceptions={exceptions}
+          startDate={state.startDate}
+          today={state.today}
+        />
+      </section>
 
       <AnkiHistory
         days={days}

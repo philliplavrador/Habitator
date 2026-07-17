@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import RepProgramCard from '@/components/RepProgramCard';
 import RepProgramHistory from '@/components/RepProgramHistory';
 import RepRecordings from '@/components/RepRecordings';
+import RestDayEditor from '@/components/RestDayEditor';
 import SessionHeatmap from '@/components/SessionHeatmap';
 import StatTile from '@/components/ui/StatTile';
 import ChartCard from '@/components/charts/ChartCard';
@@ -111,6 +112,19 @@ export default async function RepProgramPage({
               />
             </section>
           )}
+
+          <section className="rounded-card border border-border bg-surface p-4 shadow-card">
+            <h2 className="mb-3 text-sm font-semibold text-text-secondary">
+              Rest days
+            </h2>
+            <RestDayEditor
+              scope="rep"
+              refId={state.key}
+              initialExceptions={state.exceptions}
+              startDate={heatmap.startDate ?? today}
+              today={today}
+            />
+          </section>
 
           <ChartCard title="Reps per session" subtitle="Total reps vs target">
             <LineTrend

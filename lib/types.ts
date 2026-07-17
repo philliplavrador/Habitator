@@ -242,6 +242,8 @@ export interface RepProgramState {
    */
   currentStreak: number;
   longestStreak: number;
+  /** User-marked rest days (YYYY-MM-DD, ascending) that bridge the streak. */
+  exceptions: string[];
 }
 
 /** A day's outcome in the session heatmap. */
@@ -340,6 +342,8 @@ export interface PlankProgramState {
    *  lib/analytics.attemptStreak). Only a fully skipped day breaks it. */
   currentStreak: number;
   longestStreak: number;
+  /** User-marked rest days (YYYY-MM-DD, ascending) that bridge the streak. */
+  exceptions: string[];
 }
 
 // ── Anki — Core 2k/6k Japanese deck ─────────────────────────────────

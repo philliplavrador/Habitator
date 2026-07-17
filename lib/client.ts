@@ -115,6 +115,30 @@ export async function apiClearEntry(
   return { currentStreak: data.currentStreak, weekly: data.weekly };
 }
 
+// ── Streak exceptions (rest days) ───────────────────────────────────
+// One uniform endpoint for every tracker. `scope` is 'habit' | 'rep' | 'plank'
+// | 'anki'; `ref` is the habit id (as text), a rep/plank program key, or
+// 'japanese'. Marking a day excuses it so a miss doesn't break the streak.
+
+export async function apiSetException(
+  scope: string,
+  ref: string,
+  date: string
+): Promise<void> {
+  await request('/api/exceptions', 'POST', { scope, ref, date });
+}
+
+export async function apiClearException(
+  scope: string,
+  ref: string,
+  date: string
+): Promise<void> {
+  const q = `scope=${encodeURIComponent(scope)}&ref=${encodeURIComponent(
+    ref
+  )}&date=${encodeURIComponent(date)}`;
+  await request(`/api/exceptions?${q}`, 'DELETE');
+}
+
 export async function apiCreateHabit(input: HabitInput): Promise<Habit> {
   return requestJson<Habit>('/api/habits', 'POST', 'habit', input);
 }

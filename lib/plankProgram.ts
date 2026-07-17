@@ -22,6 +22,7 @@
 import { many, one, run } from './db';
 import { nowISO, todayISO } from './dates';
 import { attemptStreak } from './analytics';
+import { listExceptionSet } from './exceptions';
 import type {
   PlankProgramConfig,
   PlankProgramState,
@@ -119,7 +120,7 @@ export function createPlankProgram(config: PlankProgramConfig): PlankProgram {
     // Four independent reads (none feeds another's query) — one wave. Mirrors the
     // rep engine: `done` is COUNT(completed = 1); `latest`/`todayDone` are LIMIT-1
     // lookups; `dateRows` is the DISTINCT-date scan feeding the attempt streak.
-    const [doneRow, latest, todayDone, dateRows] = await Promise.all([
+    const [doneRow, latest, todayDone, dateRows, exceptions] = await Promise.all([
       one<{ c: number }>(
         `SELECT COUNT(*)::int AS c FROM ${t} WHERE user_id = $1 AND completed = 1${progFilter}`,
         [userId]
@@ -137,6 +138,7 @@ export function createPlankProgram(config: PlankProgramConfig): PlankProgram {
         `SELECT DISTINCT date FROM ${t} WHERE user_id = $1${progFilter} ORDER BY date ASC`,
         [userId]
       ),
+      listExceptionSet(userId, 'plank', config.key),
     ]);
 
     const done = doneRow?.c ?? 0;
@@ -149,7 +151,7 @@ export function createPlankProgram(config: PlankProgramConfig): PlankProgram {
     const daysLeft = Math.max(0, config.programDays - done);
 
     const dates = dateRows.map((r) => r.date);
-    const streak = attemptStreak(dates, today);
+    const streak = attemptStreak(dates, today, exceptions);
 
     return {
       key: config.key,
@@ -170,6 +172,7 @@ export function createPlankProgram(config: PlankProgramConfig): PlankProgram {
       lastAttempt: latest ? hydrate(latest) : null,
       currentStreak: streak.current,
       longestStreak: streak.longest,
+      exceptions: [...exceptions].sort(),
     };
   }
 

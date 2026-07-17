@@ -1,7 +1,11 @@
 import { many, one, run } from './db';
 import { addDays, compareISO, nowISO, rangeDates, todayISO } from './dates';
 import { getUserDomain } from './domains';
+import { listExceptionSet } from './exceptions';
 import type { AnkiDay, AnkiDayInput, AnkiState } from './types';
+
+/** Shared empty exception set so exception-unaware callers allocate nothing. */
+const NO_EXCEPTIONS: ReadonlySet<string> = new Set<string>();
 
 // ── Config ──────────────────────────────────────────────────────────
 //
@@ -122,20 +126,22 @@ function resolveStartDate(addedAt: string | undefined, daysAsc: AnkiDay[]): stri
 export async function getAnkiStateWithDays(
   userId: number,
   tz: string
-): Promise<{ state: AnkiState; daysAsc: AnkiDay[] }> {
-  const [dayRows, added] = await Promise.all([
+): Promise<{ state: AnkiState; daysAsc: AnkiDay[]; exceptions: string[] }> {
+  const [dayRows, added, exceptions] = await Promise.all([
     many(`SELECT * FROM anki_days WHERE user_id = $1 ORDER BY date ASC`, [
       userId,
     ]),
     getUserDomain(userId, 'japanese'),
+    listExceptionSet(userId, 'anki', 'japanese'),
   ]);
   const daysAsc = dayRows.map(hydrate);
   const state = computeAnkiState(
     daysAsc,
     todayISO(tz),
-    resolveStartDate(added?.created_at, daysAsc)
+    resolveStartDate(added?.created_at, daysAsc),
+    exceptions
   );
-  return { state, daysAsc };
+  return { state, daysAsc, exceptions: [...exceptions].sort() };
 }
 
 /** Load every day for the user and compute the full tracker state. */
@@ -162,7 +168,8 @@ export async function getAnkiState(
 export function computeAnkiState(
   daysAsc: AnkiDay[],
   today: string,
-  startDate: string = ANKI.startDate
+  startDate: string = ANKI.startDate,
+  exceptions: ReadonlySet<string> = NO_EXCEPTIONS
 ): AnkiState {
   const { deckName, deckTotal, goal, dailyMin } = ANKI;
 
@@ -208,7 +215,8 @@ export function computeAnkiState(
   const { current: currentStreak, longest: longestStreak } = computeStreak(
     daysAsc,
     dailyMin,
-    today
+    today,
+    exceptions
   );
 
   return {
@@ -247,11 +255,16 @@ export function computeAnkiState(
  * back to yesterday (grace — the day isn't over). But a today that WAS logged and
  * fell short of the minimum breaks the run immediately (it counts as a miss, not
  * an unfinished day). `longest` is the longest such run ever.
+ *
+ * A user-marked exception (rest day) is transparent: it bridges a gap between
+ * met days without adding to the count, and an excepted today can't break the
+ * run even if it was logged below the minimum.
  */
 function computeStreak(
   daysAsc: AnkiDay[],
   dailyMin: number,
-  today: string
+  today: string,
+  exceptions: ReadonlySet<string> = NO_EXCEPTIONS
 ): { current: number; longest: number } {
   const met = new Set<string>();
   const logged = new Set<string>();
@@ -259,25 +272,30 @@ function computeStreak(
     logged.add(d.date);
     if (d.new_cards >= dailyMin) met.add(d.date);
   }
+  // A day counts toward the run only if it met the minimum; an excepted day is
+  // transparent (bridges but doesn't add).
+  const bridged = (d: string) => met.has(d) || exceptions.has(d);
 
-  const sorted = [...met].sort();
+  // Longest run: walk the union of met + excepted dates, counting only met ones.
+  const sorted = [...new Set([...met, ...exceptions])].sort();
   let longest = 0;
   let run = 0;
   let prev: string | null = null;
   for (const d of sorted) {
-    if (prev && addDays(prev, 1) === d) run++;
-    else run = 1;
+    const consecutive = prev !== null && addDays(prev, 1) === d;
+    run = consecutive ? run : 0;
+    if (met.has(d)) run++;
     if (run > longest) longest = run;
     prev = d;
   }
 
   let current = 0;
   let cursor: string | null;
-  if (met.has(today)) cursor = today;
+  if (bridged(today)) cursor = today; // met OR an excused rest day today
   else if (logged.has(today)) cursor = null; // logged today but below min → broken
   else cursor = addDays(today, -1); // not logged yet → grace, resume from yesterday
-  while (cursor !== null && met.has(cursor)) {
-    current++;
+  while (cursor !== null && bridged(cursor)) {
+    if (met.has(cursor)) current++;
     cursor = addDays(cursor, -1);
   }
 

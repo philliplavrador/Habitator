@@ -9,6 +9,7 @@ import BarBreakdown from '@/components/charts/BarBreakdown';
 import { chart, weekdayColor } from '@/components/charts/theme';
 import { loadHabitOr404 } from '@/lib/habitPage';
 import { listEntriesForHabit } from '@/lib/entries';
+import { listExceptions } from '@/lib/exceptions';
 import { computeHabitStats, formatRate } from '@/lib/stats';
 import { requirePageContext } from '@/lib/pageContext';
 import { rollingCompletionSeries, dayOfWeekBreakdown } from '@/lib/analytics';
@@ -55,8 +56,13 @@ export default async function HabitDetailPage({
 
   // One all-time entries read feeds the heatmap AND (by in-memory filtering)
   // the stats and analytics — the habit and entries each used to be fetched
-  // multiple times. Rows come back date-ascending.
-  const allEntries = await listEntriesForHabit(userId, habit.id);
+  // multiple times. Rows come back date-ascending. The exceptions (rest days)
+  // load alongside so stats bridge them and the calendar can render them.
+  const [allEntries, exceptionList] = await Promise.all([
+    listEntriesForHabit(userId, habit.id),
+    listExceptions(userId, 'habit', String(habit.id)),
+  ]);
+  const exceptions = new Set(exceptionList);
 
   const statusByDate: Record<string, EntryStatus> = {};
   for (const e of allEntries) {
@@ -71,7 +77,7 @@ export default async function HabitDetailPage({
   // Stats: computeHabitStats over the since-start entries reproduces exactly what
   // getHabitStats did (it loaded the same date >= start_date set, then called the
   // same computeHabitStats, which itself applies the end_date window internally).
-  const stats = computeHabitStats(habit, sinceAll, today);
+  const stats = computeHabitStats(habit, sinceAll, today, exceptions);
 
   // Analytics over recorded days within the habit's window (on/after start, and
   // on/before the end date when it has one).
@@ -180,6 +186,7 @@ export default async function HabitDetailPage({
           <HabitCalendar
             habitId={habit.id}
             initialStatus={statusByDate}
+            initialExceptions={exceptionList}
             startDate={habit.start_date}
             endDate={habit.end_date}
             today={today}
@@ -189,10 +196,11 @@ export default async function HabitDetailPage({
         </div>
         <p className="mt-2 text-xs text-text-muted">
           {isQuit
-            ? 'Days are clean by default — tap a day to mark a slip, or clear it back to clean.'
+            ? 'Days are clean by default — tap a day to mark a slip, mark a rest day, or clear it back to clean.'
             : isScheduled
-              ? 'Faint days are off-schedule. Tap any day to mark it pass, fail, or clear it.'
-              : 'Tap any day to mark it pass, fail, or clear it back to an exception.'}
+              ? 'Faint days are off-schedule. Tap any day to mark it pass, fail, a rest day, or clear it.'
+              : 'Tap any day to mark it pass, fail, a rest day, or clear it back to blank.'}
+          {' '}A rest day is excused — it won’t break your streak.
         </p>
       </section>
 

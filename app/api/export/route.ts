@@ -28,6 +28,7 @@ export async function GET() {
     plankProgramSessions,
     ankiDays,
     userDomains,
+    streakExceptions,
   ] = await Promise.all([
     many('SELECT * FROM habits WHERE user_id = $1 ORDER BY id ASC', [userId]),
     many(
@@ -63,6 +64,10 @@ export async function GET() {
     many('SELECT * FROM user_domains WHERE user_id = $1 ORDER BY id ASC', [
       userId,
     ]),
+    many(
+      'SELECT * FROM streak_exceptions WHERE user_id = $1 ORDER BY scope ASC, ref ASC, date ASC',
+      [userId]
+    ),
   ]);
 
   // Backup envelope. `version` and the table list below are coupled to the DB
@@ -79,10 +84,11 @@ export async function GET() {
   // habits.end_date — optional YYYY-MM-DD upper bound, NULL means ongoing. version
   // 12 added userDomains — the opt-in for the built-in custom habits
   // pushups/pullups/japanese. version 13 added the user-defined plank programs:
-  // plankPrograms + plankProgramSessions.)
+  // plankPrograms + plankProgramSessions. version 14 added streakExceptions — the
+  // per-tracker rest days that bridge a streak across a missed day.)
   const payload = {
     app: 'habitator',
-    version: 13,
+    version: 14,
     exportedAt: new Date().toISOString(),
     habits,
     entries,
@@ -95,6 +101,7 @@ export async function GET() {
     plankProgramSessions,
     ankiDays,
     userDomains,
+    streakExceptions,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

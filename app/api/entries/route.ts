@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { clearEntry, listEntriesForHabitSince, setEntry } from '@/lib/entries';
+import { listExceptionSet } from '@/lib/exceptions';
 import { getHabit } from '@/lib/habits';
 import { getCurrentUserId } from '@/lib/auth';
 import { parseId, readJson, unauthorized } from '@/lib/apiRoute';
@@ -25,8 +26,16 @@ async function habitFreshState(
   date: string,
   today: string
 ): Promise<{ currentStreak: number; weekly?: WeeklyProgress }> {
-  const entries = await listEntriesForHabitSince(userId, habit.id, habit.start_date);
-  const currentStreak = computeHabitStats(habit, entries, today).currentStreak;
+  const [entries, exceptions] = await Promise.all([
+    listEntriesForHabitSince(userId, habit.id, habit.start_date),
+    listExceptionSet(userId, 'habit', String(habit.id)),
+  ]);
+  const currentStreak = computeHabitStats(
+    habit,
+    entries,
+    today,
+    exceptions
+  ).currentStreak;
   let weekly: WeeklyProgress | undefined;
   if (habit.schedule.kind === 'weekly') {
     const wkStart = weekStartOf(date);

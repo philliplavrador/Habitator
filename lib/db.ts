@@ -227,6 +227,30 @@ ALTER TABLE habits ADD COLUMN IF NOT EXISTS schedule TEXT;
 -- + no default keeps migrate.ts's explicit-column INSERT (which omits it) valid,
 -- exactly like the schedule column above.
 ALTER TABLE habits ADD COLUMN IF NOT EXISTS end_date TEXT;
+
+-- ── Streak exceptions (rest days) ─────────────────────────────────────
+-- A user can mark a specific day as an "exception" for any tracker so a missed
+-- day does NOT break its streak. Deliberately ORTHOGONAL to entries/*_sessions/
+-- anki_days: keeping it a separate table means EntryStatus stays 'pass'|'fail'
+-- (no CHECK swap on the existing entries table) and one uniform mechanism covers
+-- plain habits AND every custom habit (rep programs, plank, anki). Each streak
+-- computation reads the matching (scope, ref) dates and treats them as bridged —
+-- an excepted day neither breaks nor extends the streak.
+--   scope 'habit' → ref = the habit id (as text)
+--   scope 'rep'   → ref = the program key ('pushups' | 'pullups' | 'rep<id>')
+--   scope 'plank' → ref = the program key ('plank<id>')
+--   scope 'anki'  → ref = 'japanese'
+CREATE TABLE IF NOT EXISTS streak_exceptions (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  scope      TEXT    NOT NULL,   -- 'habit' | 'rep' | 'plank' | 'anki'
+  ref        TEXT    NOT NULL,   -- habit id / program key / 'japanese'
+  date       TEXT    NOT NULL,   -- YYYY-MM-DD (owner-local day)
+  created_at TEXT    NOT NULL,
+  UNIQUE (user_id, scope, ref, date)
+);
+CREATE INDEX IF NOT EXISTS idx_streak_exc_lookup
+  ON streak_exceptions (user_id, scope, ref);
 `;
 
 // Backfill the custom-habit opt-in for users who predate `user_domains`: if you

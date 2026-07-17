@@ -18,6 +18,7 @@
 import { many, one, run, tx } from './db';
 import { nowISO, todayISO } from './dates';
 import { attemptStreak } from './analytics';
+import { listExceptionSet } from './exceptions';
 import type { RepProgramConfig, RepProgramState, RepSession } from './types';
 
 /** The prescribed reps for a program day: total grows by 1/day, spread evenly
@@ -154,7 +155,7 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     // in one wave. `done` is still COUNT(completed = 1); `latest`/`todayDone` are
     // the same LIMIT-1 lookups; `dateRows` is the same DISTINCT-date scan — only
     // the dispatch order changed, so every derived value below is unchanged.
-    const [doneRow, latest, todayDone, dateRows] = await Promise.all([
+    const [doneRow, latest, todayDone, dateRows, exceptions] = await Promise.all([
       one<{ c: number }>(
         `SELECT COUNT(*)::int AS c FROM ${t} WHERE user_id = $1 AND completed = 1${progFilter}`,
         [userId]
@@ -172,6 +173,7 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
         `SELECT DISTINCT date FROM ${t} WHERE user_id = $1${progFilter} ORDER BY date ASC`,
         [userId]
       ),
+      listExceptionSet(userId, 'rep', config.key),
     ]);
 
     const done = doneRow?.c ?? 0;
@@ -185,7 +187,7 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
     const daysLeft = Math.max(0, config.programDays - done);
 
     const dates = dateRows.map((r) => r.date);
-    const streak = attemptStreak(dates, today);
+    const streak = attemptStreak(dates, today, exceptions);
 
     return {
       key: config.key,
@@ -205,6 +207,7 @@ export function createRepProgram(config: RepProgramConfig): RepProgram {
       lastAttempt: latest ? hydrate(latest) : null,
       currentStreak: streak.current,
       longestStreak: streak.longest,
+      exceptions: [...exceptions].sort(),
     };
   }
 

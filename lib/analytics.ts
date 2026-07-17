@@ -26,6 +26,9 @@ import type {
   RepSession,
 } from './types';
 
+/** Shared empty exception set so exception-unaware callers allocate nothing. */
+const EMPTY_DATE_SET: ReadonlySet<string> = new Set<string>();
+
 // ── Habits ──────────────────────────────────────────────────────────
 
 export interface RatePoint {
@@ -257,23 +260,34 @@ export interface StreakStat {
  * this is deliberately NOT the same as stats.computeStats (list-position) or
  * anki.computeStreak (daily-minimum + today-grace) semantics.
  */
-function streakOverDays(days: Set<string>, today: string): StreakStat {
-  // Longest run across all covered days.
-  const sorted = [...days].sort();
+function streakOverDays(
+  days: Set<string>,
+  today: string,
+  exceptions: ReadonlySet<string> = EMPTY_DATE_SET
+): StreakStat {
+  // A user-marked exception (rest day) is transparent: it bridges a gap between
+  // covered days without counting toward the run length. Walk over the union of
+  // covered + excepted dates, but only tally the covered ones.
+  const covered = (d: string) => days.has(d) || exceptions.has(d);
+
+  // Longest run across all covered days, bridging over excepted days.
+  const sorted = [...new Set([...days, ...exceptions])].sort();
   let longest = 0;
   let run = 0;
   let prev: string | null = null;
   for (const d of sorted) {
-    if (prev && addDays(prev, 1) === d) run++;
-    else run = 1;
+    const consecutive = prev !== null && addDays(prev, 1) === d;
+    run = consecutive ? run : 0;
+    if (days.has(d)) run++; // excepted-only days extend the block but not the count
     if (run > longest) longest = run;
     prev = d;
   }
   // Current run ending today (or yesterday, so an unbroken habit shows through).
+  // A rest day today (or yesterday) keeps the run alive as the anchor.
   let current = 0;
-  let cursor = days.has(today) ? today : addDays(today, -1);
-  while (days.has(cursor)) {
-    current++;
+  let cursor = covered(today) ? today : addDays(today, -1);
+  while (covered(cursor)) {
+    if (days.has(cursor)) current++;
     cursor = addDays(cursor, -1);
   }
   return { current, longest };
@@ -304,9 +318,14 @@ const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
  * dates (order-independent). Only a fully skipped day breaks the run; a `today`
  * with no attempt yet does not — the current run is anchored at today if it has
  * an attempt, else at yesterday (so an in-progress day never reads as broken).
+ * A user-marked exception (rest day) bridges a skipped day without counting.
  */
-export function attemptStreak(dates: string[], today: string): StreakStat {
-  return streakOverDays(new Set(dates), today);
+export function attemptStreak(
+  dates: string[],
+  today: string,
+  exceptions: ReadonlySet<string> = EMPTY_DATE_SET
+): StreakStat {
+  return streakOverDays(new Set(dates), today, exceptions);
 }
 
 /**
