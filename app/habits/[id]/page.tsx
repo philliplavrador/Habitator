@@ -99,7 +99,7 @@ export default async function HabitDetailPage({
   }));
 
   return (
-    <main className="py-4">
+    <main className="pb-28 pt-4">
       <BackHeader
         href="/"
         title={habit.name}

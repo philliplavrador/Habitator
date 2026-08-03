@@ -27,7 +27,7 @@ function ChartSkeleton({ height = 'h-52' }: { height?: string }) {
 
 export default function Loading() {
   return (
-    <main className="py-4">
+    <main className="pb-28 pt-4">
       {/* BackHeader: ‹ back button + title */}
       <header className="mb-5 flex items-center gap-3">
         <div className="h-9 w-9 shrink-0 animate-pulse rounded-btn border border-border" />

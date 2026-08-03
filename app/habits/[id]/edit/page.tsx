@@ -15,7 +15,7 @@ export default async function EditHabitPage({
   const habit = await loadHabitOr404(params.id, userId);
 
   return (
-    <main className="py-4">
+    <main className="pb-28 pt-4">
       <BackHeader href={`/habits/${habit.id}`} title="Edit habit" />
 
       <AddHabitForm habit={habit} tz={tz} />

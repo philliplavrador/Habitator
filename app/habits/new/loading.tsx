@@ -3,7 +3,7 @@
 
 export default function Loading() {
   return (
-    <main className="py-4">
+    <main className="pb-28 pt-4">
       <div className="mb-5 flex items-center gap-3">
         <div className="h-9 w-9 animate-pulse rounded-btn border border-border bg-surface" />
         <div className="h-6 w-32 animate-pulse rounded bg-surface2" />

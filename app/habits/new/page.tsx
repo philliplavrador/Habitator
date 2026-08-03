@@ -13,7 +13,7 @@ export default async function NewHabitPage() {
   const added = (await listUserDomains(userId)).map((d) => d.domain);
 
   return (
-    <main className="py-4">
+    <main className="pb-28 pt-4">
       <BackHeader href="/" title="New habit" />
 
       <NewHabitFlow tz={tz} library={CUSTOM_HABIT_LIBRARY} added={added} />
