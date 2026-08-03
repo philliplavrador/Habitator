@@ -40,6 +40,12 @@ interface Props {
    * like ordinary habits, a completed one drops into the "Completed" section.
    */
   widgets?: WidgetItem[];
+  /**
+   * `date` is later than today: a preview of what's scheduled. Nothing can be
+   * done or celebrated yet, so the ring, the active/completed split and the
+   * celebrations all stand down; only rest-day planning stays live.
+   */
+  isFuture?: boolean;
 }
 
 const MILESTONES = [7, 30, 100];
@@ -66,6 +72,7 @@ function MotionRow({
   view,
   zone,
   busy,
+  readOnly,
   onSetStatus,
   onMarkException,
   onClearException,
@@ -73,6 +80,7 @@ function MotionRow({
   view: HabitDayView;
   zone: 'active' | 'completed';
   busy: boolean;
+  readOnly?: boolean;
   onSetStatus: (next: EntryStatus | null) => void;
   onMarkException: () => void;
   onClearException: () => void;
@@ -89,6 +97,7 @@ function MotionRow({
       <HabitRow
         view={view}
         busy={busy}
+        readOnly={readOnly}
         onSetStatus={onSetStatus}
         onMarkException={onMarkException}
         onClearException={onClearException}
@@ -97,7 +106,12 @@ function MotionRow({
   );
 }
 
-export default function TodayClient({ date, initialItems, widgets }: Props) {
+export default function TodayClient({
+  date,
+  initialItems,
+  widgets,
+  isFuture,
+}: Props) {
   const { perfectDay, milestone } = useCelebration();
   const { show } = useToast();
   const [items, setItems] = useState<HabitDayView[]>(initialItems);
@@ -155,20 +169,32 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   // habits sink to a scroll-down "Completed" zone; a `fail` or untouched habit
   // stays active. Derived from the optimistic `buildItems`, so a row leaves the
   // active list the instant it's tapped/excused, before the server round-trip.
-  const activeItems = buildItems.filter(
-    (i) => i.status !== 'pass' && !i.excepted
-  );
-  const completedItems = buildItems.filter(
-    (i) => i.status === 'pass' || i.excepted
-  );
+  //
+  // A future day has no split to make — nothing is done yet — so everything
+  // stays in one flat list. An excused future day still renders its rest-day
+  // row there rather than being tucked away behind "Show completed", which
+  // would hide the very plan you just made.
+  const activeItems = isFuture
+    ? buildItems
+    : buildItems.filter((i) => i.status !== 'pass' && !i.excepted);
+  const completedItems = isFuture
+    ? []
+    : buildItems.filter((i) => i.status === 'pass' || i.excepted);
 
   // Custom-habit widgets mirror the same split: an unfinished domain stays in
   // the active list; a completed one sinks into the "Completed" section and
   // counts toward its "Show completed" tally.
   const widgetItems = widgets ?? [];
-  const activeWidgets = widgetItems.filter((w) => !w.completed);
-  const completedWidgets = widgetItems.filter((w) => w.completed);
+  const activeWidgets = isFuture
+    ? widgetItems
+    : widgetItems.filter((w) => !w.completed);
+  const completedWidgets = isFuture ? [] : widgetItems.filter((w) => w.completed);
   const completedTotal = completedItems.length + completedWidgets.length;
+
+  // Future-day header line, in place of the progress ring: how much the day
+  // holds, counting plain habits and custom habits alike.
+  const scheduledCount =
+    buildItems.length + quitItems.length + widgetItems.length;
 
   const nothingToShow =
     buildItems.length === 0 && quitItems.length === 0 && widgetItems.length === 0;
@@ -178,6 +204,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
   // the current state so an already-complete day doesn't celebrate on load.
   const prevAllDone = useRef(allDone);
   useEffect(() => {
+    if (isFuture) return;
     if (allDone && !prevAllDone.current) {
       perfectDay();
       show({
@@ -187,7 +214,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
       });
     }
     prevAllDone.current = allDone;
-  }, [allDone, total, perfectDay, show]);
+  }, [allDone, total, perfectDay, show, isFuture]);
 
   // ── Streak-milestone celebration ──
   // Streaks are server-computed. Since the check-off path no longer calls
@@ -204,7 +231,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
     for (const it of initialItems) {
       const prev = seenStreaks.current.get(it.habit.id) ?? 0;
       const cur = it.currentStreak;
-      if (streaksInit.current && cur > prev) {
+      if (streaksInit.current && cur > prev && !isFuture) {
         const crossed = MILESTONES.filter((m) => cur >= m && prev < m);
         if (crossed.length) {
           const m = Math.max(...crossed);
@@ -219,7 +246,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
       seenStreaks.current.set(it.habit.id, cur);
     }
     streaksInit.current = true;
-  }, [initialItems, milestone, show]);
+  }, [initialItems, milestone, show, isFuture]);
 
   // Fire the milestone celebration for a habit whose freshly-merged streak
   // crossed 7/30/100 upward — the merge-path equivalent of the effect above.
@@ -383,7 +410,15 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
 
   return (
     <div>
-      {total > 0 && (
+      {/* A future day is always 0-of-N, so the ring would read as failure for a
+          day that hasn't started. Show what the day holds instead. */}
+      {isFuture && scheduledCount > 0 && (
+        <p className="mb-5 text-center text-sm text-text-muted">
+          {scheduledCount} habit{scheduledCount === 1 ? '' : 's'} scheduled
+        </p>
+      )}
+
+      {total > 0 && !isFuture && (
         <div className="mb-6 flex flex-col items-center">
           <ProgressRing progress={progress} reached={allDone} size={168} stroke={12}>
             <div className="font-display text-3xl font-bold tabular-nums text-text-primary">
@@ -438,6 +473,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                       view={view}
                       zone="active"
                       busy={busyId === view.habit.id}
+                      readOnly={isFuture}
                       onSetStatus={(next) => handleSet(view.habit.id, next)}
                       onMarkException={() =>
                         setReasonFor({ id: view.habit.id, name: view.habit.name })
@@ -493,6 +529,7 @@ export default function TodayClient({ date, initialItems, widgets }: Props) {
                       view={view}
                       zone="active"
                       busy={busyId === view.habit.id}
+                      readOnly={isFuture}
                       onSetStatus={(next) => handleSet(view.habit.id, next)}
                       onMarkException={() =>
                         setReasonFor({ id: view.habit.id, name: view.habit.name })

@@ -284,6 +284,42 @@ export function computeWeeklyStats(
 }
 
 /**
+ * The subset of a habit's rest days that may count toward its score: those on or
+ * before `through` (the effective "today").
+ *
+ * Rest days can be planned ahead, so the set can hold dates that haven't
+ * happened. Most rule functions are already safe — the calendar walks stop at
+ * `today`, and `computeStats` filters *entries*, which can never be future. But
+ * `computeWeeklyStats` buckets the exception set itself by week with no upper
+ * bound, and each exception in a week lowers that week's required count. So
+ * excusing next Friday while it's Wednesday would shave THIS week's target and
+ * could extend the weekly streak for a day still to come. Clamping once here
+ * covers every rule and every caller (`computeHabitStats` is the only entry
+ * point, including the batched Today-screen streaks).
+ *
+ * Returns the original set when nothing is out of range, so the common case
+ * allocates nothing.
+ */
+function scoreableExceptions(
+  exceptions: ReadonlySet<string>,
+  through: string
+): ReadonlySet<string> {
+  let hasFuture = false;
+  for (const d of exceptions) {
+    if (compareISO(d, through) > 0) {
+      hasFuture = true;
+      break;
+    }
+  }
+  if (!hasFuture) return exceptions;
+  const out = new Set<string>();
+  for (const d of exceptions) {
+    if (compareISO(d, through) <= 0) out.add(d);
+  }
+  return out;
+}
+
+/**
  * Dispatch to the right stats rules for the habit's kind + schedule.
  *
  * A habit with an `end_date` is scored only through that day — its stats FREEZE
@@ -305,9 +341,13 @@ export function computeHabitStats(
   const effectiveToday = end !== null && compareISO(end, today) < 0 ? end : today;
   const windowed =
     end !== null ? entries.filter((e) => compareISO(e.date, end) <= 0) : entries;
+  // Rest days can be planned AHEAD (see MAX_FUTURE_DAYS), so the set may contain
+  // dates that haven't happened. Scoring must ignore those, or excusing a day
+  // still to come would move a stat today — see `scoreableExceptions`.
+  const scoreable = scoreableExceptions(exceptions, effectiveToday);
 
   if (habit.kind === 'quit') {
-    return computeQuitStats(windowed, habit.start_date, effectiveToday, exceptions);
+    return computeQuitStats(windowed, habit.start_date, effectiveToday, scoreable);
   }
   switch (habit.schedule.kind) {
     case 'weekdays':
@@ -317,7 +357,7 @@ export function computeHabitStats(
         habit.schedule,
         habit.start_date,
         effectiveToday,
-        exceptions
+        scoreable
       );
     case 'weekly':
       return computeWeeklyStats(
@@ -325,10 +365,10 @@ export function computeHabitStats(
         habit.schedule.count,
         habit.start_date,
         effectiveToday,
-        exceptions
+        scoreable
       );
     default:
-      return computeStats(windowed, exceptions);
+      return computeStats(windowed, scoreable);
   }
 }
 

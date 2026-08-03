@@ -8,7 +8,13 @@ import {
 import { getHabit } from '@/lib/habits';
 import { getCurrentUserId } from '@/lib/auth';
 import { parseId, readJson, unauthorized } from '@/lib/apiRoute';
-import { compareISO, isValidISODate, todayISO } from '@/lib/dates';
+import {
+  MAX_FUTURE_DAYS,
+  addDays,
+  compareISO,
+  isValidISODate,
+  todayISO,
+} from '@/lib/dates';
 import { getTimezone } from '@/lib/tz';
 import { getHabitFreshState } from '@/lib/stats';
 import type { Habit } from '@/lib/types';
@@ -44,10 +50,18 @@ interface ExceptionTarget {
 
 /**
  * Validate the (scope, ref, date) triple against the owner's data. Returns the
- * target on success or an error NextResponse to return as-is. Future dates are
- * always rejected (a rest day can only excuse a day that has passed); for a
- * habit the date must also fall inside its tracked [start_date, end_date] window
- * and the habit must belong to the user.
+ * target on success or an error NextResponse to return as-is.
+ *
+ * A plain habit may have a rest day planned AHEAD, within MAX_FUTURE_DAYS — the
+ * Today screen navigates that far forward, so you can excuse next Tuesday before
+ * a trip. (`computeHabitStats` ignores not-yet-happened rest days when scoring,
+ * so planning one can't move a stat today.) The custom-habit scopes stay
+ * past-only: nothing in the UI plans them ahead, and their streaks run through
+ * `analytics.streakOverDays` / `anki.computeStreak`, which haven't been audited
+ * for future-dated exceptions.
+ *
+ * For a habit the date must also fall inside its tracked [start_date, end_date]
+ * window and the habit must belong to the user.
  */
 async function resolveTarget(
   userId: number,
@@ -65,9 +79,16 @@ async function resolveTarget(
   if (!isValidISODate(date)) {
     return NextResponse.json({ error: 'Bad date.' }, { status: 400 });
   }
-  if (compareISO(date, todayISO(getTimezone())) > 0) {
+  const today = todayISO(getTimezone());
+  const latest = scope === 'habit' ? addDays(today, MAX_FUTURE_DAYS) : today;
+  if (compareISO(date, latest) > 0) {
     return NextResponse.json(
-      { error: 'Cannot mark a future date as an exception.' },
+      {
+        error:
+          scope === 'habit'
+            ? `Cannot plan a rest day more than ${MAX_FUTURE_DAYS} days ahead.`
+            : 'Cannot mark a future date as an exception.',
+      },
       { status: 400 }
     );
   }

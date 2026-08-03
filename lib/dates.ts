@@ -149,13 +149,27 @@ export function formatHumanYear(iso: string): string {
 }
 
 /**
- * Friendly relative label: "Today", "Yesterday", else the human date. `today`
- * is passed in (the caller computes it once via {@link todayISO} with the
- * owner's zone) so this stays a pure string function.
+ * How far past today the Today screen may look ahead. A future day is a
+ * READ-ONLY preview of what's scheduled — you can't check a day off before it
+ * happens — except for rest days, which may be planned ahead (excuse next
+ * Tuesday before a trip). A quarter is enough to plan around travel and keeps
+ * the forward arrow from running forever.
+ *
+ * Two places enforce it: the Today page clamps `?date=` to this window, and
+ * POST/DELETE /api/exceptions accepts future dates only within it (and only for
+ * scope 'habit').
+ */
+export const MAX_FUTURE_DAYS = 90;
+
+/**
+ * Friendly relative label: "Today", "Yesterday", "Tomorrow", else the human
+ * date. `today` is passed in (the caller computes it once via {@link todayISO}
+ * with the owner's zone) so this stays a pure string function.
  */
 export function relativeLabel(iso: string, today: string): string {
   if (iso === today) return 'Today';
   if (iso === addDays(today, -1)) return 'Yesterday';
+  if (iso === addDays(today, 1)) return 'Tomorrow';
   return formatHuman(iso);
 }
 

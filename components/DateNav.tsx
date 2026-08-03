@@ -4,7 +4,7 @@ import { relativeLabel } from '@/lib/dates';
 interface Props {
   date: string;
   prevDate: string;
-  /** null when `date` is today — there is no "next" past today. */
+  /** null at the far edge of the forward preview window (see MAX_FUTURE_DAYS). */
   nextDate: string | null;
   /** Today in the owner's timezone (resolved on the server). */
   today: string;

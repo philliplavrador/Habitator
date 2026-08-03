@@ -14,10 +14,25 @@ interface Props {
   onMarkException?: () => void;
   /** Clear the rest-day exception (un-excuse this day). */
   onClearException?: () => void;
+  /**
+   * A future day: the pass/fail (and quit "I slipped") controls are hidden,
+   * because a day that hasn't happened can't be scored. The rest-day controls
+   * stay live — planning a day off ahead of time is the point of looking
+   * forward. See MAX_FUTURE_DAYS.
+   */
+  readOnly?: boolean;
 }
 
 const tap = { scale: 0.86 };
 const spring = { type: 'spring', stiffness: 420, damping: 16 } as const;
+
+/**
+ * The card shell every Today-screen row wears. Exported so the non-interactive
+ * rows that aren't a `HabitRow` — the custom-habit "Scheduled" rows on a future
+ * day — match it exactly without copying the classes.
+ */
+export const rowShellClass =
+  'flex items-center gap-3 rounded-card border border-border bg-surface px-3 py-3 shadow-card';
 
 /** Shared row shell: the habit name link + an optional sub-line under it. */
 function RowShell({
@@ -32,7 +47,7 @@ function RowShell({
   children: React.ReactNode;
 }) {
   return (
-    <li className="flex items-center gap-3 rounded-card border border-border bg-surface px-3 py-3 shadow-card">
+    <li className={rowShellClass}>
       <div className="min-w-0 flex-1">
         <Link
           href={href}
@@ -53,6 +68,7 @@ export default function HabitRow({
   onSetStatus,
   onMarkException,
   onClearException,
+  readOnly,
 }: Props) {
   const { habit, status, currentStreak, weekly } = view;
   const href = `/habits/${habit.id}`;
@@ -114,25 +130,32 @@ export default function HabitRow({
       <span className="mt-0.5 inline-block text-xs text-text-muted">On track</span>
     );
 
+    // On a future day there's no slip to record yet, so the row offers only the
+    // rest-day control (which today's quit rows don't surface — a slip you
+    // haven't had needs no excuse, but a trip you know about does).
     return (
       <RowShell href={href} name={habit.name} sub={sub}>
-        <m.button
-          type="button"
-          aria-label={slipped ? 'Undo slip' : 'Mark a slip'}
-          aria-pressed={slipped}
-          disabled={busy}
-          onClick={() => onSetStatus(slipped ? null : 'fail')}
-          whileTap={tap}
-          transition={spring}
-          className={[
-            'flex h-11 items-center justify-center rounded-btn border px-3 text-sm font-semibold disabled:opacity-50',
-            slipped
-              ? 'border-fail bg-fail text-white'
-              : 'border-border bg-surface2 text-text-secondary active:border-fail active:text-fail',
-          ].join(' ')}
-        >
-          {slipped ? 'Undo' : 'I slipped'}
-        </m.button>
+        {readOnly ? (
+          restButton
+        ) : (
+          <m.button
+            type="button"
+            aria-label={slipped ? 'Undo slip' : 'Mark a slip'}
+            aria-pressed={slipped}
+            disabled={busy}
+            onClick={() => onSetStatus(slipped ? null : 'fail')}
+            whileTap={tap}
+            transition={spring}
+            className={[
+              'flex h-11 items-center justify-center rounded-btn border px-3 text-sm font-semibold disabled:opacity-50',
+              slipped
+                ? 'border-fail bg-fail text-white'
+                : 'border-border bg-surface2 text-text-secondary active:border-fail active:text-fail',
+            ].join(' ')}
+          >
+            {slipped ? 'Undo' : 'I slipped'}
+          </m.button>
+        )}
       </RowShell>
     );
   }
@@ -160,6 +183,17 @@ export default function HabitRow({
         {scheduleHint && <span>{scheduleHint}</span>}
       </span>
     ) : undefined;
+
+  // A future day shows what's scheduled and lets you excuse it, nothing more —
+  // checking off a day that hasn't happened would corrupt streaks and stats
+  // (the entries API rejects it server-side too).
+  if (readOnly) {
+    return (
+      <RowShell href={href} name={habit.name} sub={sub}>
+        {restButton}
+      </RowShell>
+    );
+  }
 
   return (
     <RowShell href={href} name={habit.name} sub={sub}>
