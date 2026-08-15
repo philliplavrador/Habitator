@@ -165,6 +165,44 @@ export async function apiDeleteHabit(id: number): Promise<void> {
   await request(`/api/habits/${id}`, 'DELETE');
 }
 
+// ── Push notifications ──────────────────────────────────────────────
+
+/** Set a habit's reminder time ('HH:MM' owner-local), or null to turn it off. */
+export async function apiSetHabitNotifyAt(
+  id: number,
+  notifyAt: string | null
+): Promise<void> {
+  await request(`/api/habits/${id}`, 'PATCH', { notify_at: notifyAt });
+}
+
+/**
+ * Whether the server has VAPID keys, and the public one if so. Returns the
+ * whole body rather than one unwrapped key, so it uses `request` directly.
+ */
+export async function apiPushConfig(): Promise<{
+  configured: boolean;
+  publicKey: string | null;
+}> {
+  const res = await request('/api/push', 'GET');
+  return res.json();
+}
+
+/** Register this device for push. */
+export async function apiRegisterPush(sub: {
+  endpoint: string;
+  keys?: Record<string, string>;
+}): Promise<void> {
+  await request('/api/push', 'POST', {
+    endpoint: sub.endpoint,
+    keys: sub.keys,
+  });
+}
+
+/** Drop this device's registration. */
+export async function apiUnregisterPush(endpoint: string): Promise<void> {
+  await request(`/api/push?endpoint=${encodeURIComponent(endpoint)}`, 'DELETE');
+}
+
 export async function apiLogout(): Promise<void> {
   await request('/api/logout', 'POST');
 }

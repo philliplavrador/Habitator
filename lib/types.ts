@@ -22,15 +22,26 @@ export type HabitKind = 'build' | 'quit';
  * - `weekdays`— only the listed weekdays (0=Sun … 6=Sat), e.g. every Wed.
  * - `interval`— every N days counted from `start_date` (every other day = 2).
  * - `weekly`  — a target of N completions per calendar week (Sun-based).
+ * - `monthly` — once a month on an anchor day, ROLLING until done.
  *
- * The three non-daily kinds are STRICT: a due day you don't complete counts as
- * a miss and breaks the streak (see lib/stats.ts computeScheduledStats).
+ * `weekdays`, `interval` and `weekly` are STRICT: a due day you don't complete
+ * counts as a miss and breaks the streak (see lib/stats.ts
+ * computeScheduledStats). `daily` and `monthly` are LENIENT — both route to
+ * computeStats, where a blank day is skipped rather than scored. Monthly is
+ * lenient *by design*: it rolls forward instead of missing, so there is no
+ * failed due-day to record (the Today row shows "Overdue N days" instead).
  */
 export type Schedule =
   | { kind: 'daily' }
   | { kind: 'weekdays'; days: number[] } // 0=Sun..6=Sat, non-empty, sorted-unique
   | { kind: 'interval'; every: number } // every N days from start_date (N >= 1)
-  | { kind: 'weekly'; count: number }; // N times per week (1..7)
+  | { kind: 'weekly'; count: number } // N times per week (1..7)
+  // Once a month on `day` (1..28, or 31 = last day), and it ROLLS: if you miss
+  // the anchor day it stays due every day after until you do it, across month
+  // boundaries, forever. It never resets and a skipped month is never a miss —
+  // so unlike every other kind, its due-ness depends on completion history, not
+  // just the calendar (see isDueOn's `lastPass` argument).
+  | { kind: 'monthly'; day: number };
 
 export type ScheduleKind = Schedule['kind'];
 
@@ -46,6 +57,8 @@ export interface Habit {
   sort_order: number;
   archived: number; // 0 | 1 (SQLite has no boolean)
   created_at: string; // ISO timestamp
+  notify_at?: string | null; // 'HH:MM' owner-local reminder time; null ⇒ off
+  last_notified_date?: string | null; // YYYY-MM-DD the last reminder went out
 }
 
 export interface Entry {
@@ -77,6 +90,12 @@ export interface HabitDayView {
   excepted?: boolean;
   /** Optional note on why the day was excused (shown on the row). */
   exceptionReason?: string | null;
+  /**
+   * For a rolling `monthly` habit: days elapsed since the anchor day it's still
+   * open from (0 when it's due today). Since a skipped month is never recorded
+   * as a miss, this is the only signal that one is being ignored.
+   */
+  overdueDays?: number;
 }
 
 /** Input accepted when creating/updating a habit. */

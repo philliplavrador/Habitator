@@ -227,6 +227,39 @@ ALTER TABLE habits ADD COLUMN IF NOT EXISTS schedule TEXT;
 -- + no default keeps migrate.ts's explicit-column INSERT (which omits it) valid,
 -- exactly like the schedule column above.
 ALTER TABLE habits ADD COLUMN IF NOT EXISTS end_date TEXT;
+-- Per-habit reminder time, 'HH:MM' in the OWNER's local zone. NULL ⇒ no
+-- notification for this habit (the default, so every pre-existing row is opted
+-- out). Nullable + no default keeps migrate.ts's explicit-column INSERT valid,
+-- exactly like schedule/end_date above.
+ALTER TABLE habits ADD COLUMN IF NOT EXISTS notify_at TEXT;
+-- The last owner-local day a reminder actually went out for this habit. The
+-- sender writes it and refuses to send twice for the same day, so a cron that
+-- runs every few minutes (or runs twice after a redeploy) can't spam.
+ALTER TABLE habits ADD COLUMN IF NOT EXISTS last_notified_date TEXT;
+
+-- ── Push notifications ────────────────────────────────────────────────
+-- The owner's IANA timezone, persisted. Everything user-facing resolves the zone
+-- from the tz COOKIE (lib/tz.ts), which is fine for requests the owner makes —
+-- but the reminder sender runs from a cron with no cookie, so it needs the zone
+-- in the database to know when "08:00 local" is. TimezoneSync writes it on the
+-- next visit; a user who hasn't visited since this shipped simply has NULL and
+-- is skipped by the sender until they do.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tz TEXT;
+
+-- One row per push subscription (a browser/device). A single user can have
+-- several — phone, laptop — so the sender fans out to all of them. The endpoint
+-- is globally unique (it IS the push service's address for that device), which
+-- makes re-subscribing an idempotent upsert. Deleted on 404/410 from the push
+-- service, i.e. when the subscription has expired.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint   TEXT    NOT NULL UNIQUE,
+  p256dh     TEXT    NOT NULL,   -- client public key (base64url)
+  auth       TEXT    NOT NULL,   -- client auth secret (base64url)
+  created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions (user_id);
 
 -- ── Streak exceptions (rest days) ─────────────────────────────────────
 -- A user can mark a specific day as an "exception" for any tracker so a missed

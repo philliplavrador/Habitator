@@ -3,6 +3,7 @@ import StatTile from '@/components/ui/StatTile';
 import Heatmap from '@/components/Heatmap';
 import HabitCalendar from '@/components/HabitCalendar';
 import HabitActions from '@/components/HabitActions';
+import NotifyToggle from '@/components/NotifyToggle';
 import ChartCard from '@/components/charts/ChartCard';
 import LineTrend from '@/components/charts/LineTrend';
 import BarBreakdown from '@/components/charts/BarBreakdown';
@@ -234,6 +235,8 @@ export default async function HabitDetailPage({
           </ChartCard>
         </section>
       )}
+
+      <NotifyToggle habitId={habit.id} notifyAt={habit.notify_at ?? null} />
 
       <HabitActions
         id={habit.id}

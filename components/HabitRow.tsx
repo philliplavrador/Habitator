@@ -167,16 +167,26 @@ export default function HabitRow({
   // Sub-line: weekly progress (weekly habits), the streak, and a schedule hint
   // for fixed-day/interval habits so it's clear which days they're expected.
   const scheduleHint =
-    habit.schedule.kind === 'weekdays' || habit.schedule.kind === 'interval'
+    habit.schedule.kind === 'weekdays' ||
+    habit.schedule.kind === 'interval' ||
+    habit.schedule.kind === 'monthly'
       ? describeSchedule(habit.schedule)
       : null;
   const weekMet = weekly ? weekly.done >= weekly.target : false;
+  // A rolling monthly habit records no misses, so "Overdue N days" is the only
+  // place the screen admits it's been sitting there since the 1st.
+  const overdue = view.overdueDays ?? 0;
   const sub =
-    weekly || currentStreak > 0 || scheduleHint ? (
+    weekly || currentStreak > 0 || scheduleHint || overdue > 0 ? (
       <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-text-muted">
         {weekly && (
           <span className={weekMet ? 'font-medium text-pass' : ''}>
             {weekly.done}/{weekly.target} this week
+          </span>
+        )}
+        {overdue > 0 && (
+          <span className="font-medium text-fail">
+            Overdue {overdue} day{overdue === 1 ? '' : 's'}
           </span>
         )}
         {currentStreak > 0 && <span>🔥 {currentStreak}</span>}

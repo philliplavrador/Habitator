@@ -367,6 +367,14 @@ export function computeHabitStats(
         effectiveToday,
         scoreable
       );
+    case 'monthly':
+    // A rolling monthly habit is scored with the LENIENT daily rules on
+    // purpose: it never resets and a skipped month is never a miss, so there is
+    // no "due day you failed" to score — only the days you actually did it.
+    // Blank days are skipped exactly as for `daily`. Explicit here rather than
+    // left to fall through, because a kind with unusual semantics landing in a
+    // default branch by accident is how it silently gets the wrong rules later.
+    // eslint-disable-next-line no-fallthrough
     default:
       return computeStats(windowed, scoreable);
   }

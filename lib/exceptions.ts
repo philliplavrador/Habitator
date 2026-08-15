@@ -108,6 +108,36 @@ export async function listExceptionSetsForRefs(
 }
 
 /**
+ * For each habit id, the latest rest day on or before `date`.
+ *
+ * Only a rolling `monthly` habit needs this. For every other kind a rest day
+ * excuses exactly one day, which is all they need — but a monthly obligation
+ * that rolls until completed would come straight back tomorrow, so excusing it
+ * has to satisfy the whole cycle. Pairs with `lastPassByHabit`: due-ness looks
+ * at whichever is later.
+ */
+export async function lastHabitExceptionByRef(
+  userId: number,
+  habitIds: number[],
+  date: string
+): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (habitIds.length === 0) return out;
+  const rows = await many<{ ref: string; last_date: string }>(
+    `SELECT ref, MAX(date) AS last_date
+       FROM streak_exceptions
+      WHERE user_id = $1 AND scope = 'habit' AND ref = ANY($2) AND date <= $3
+      GROUP BY ref`,
+    [userId, habitIds.map(String), date]
+  );
+  for (const r of rows) {
+    const id = Number(r.ref);
+    if (Number.isInteger(id) && r.last_date) out.set(id, r.last_date);
+  }
+  return out;
+}
+
+/**
  * Mark (scope, ref, date) as an exception, with an optional reason. Idempotent
  * on the (scope, ref, date) key; re-marking an existing day updates its reason
  * (so editing the note in the UI sticks).

@@ -24,7 +24,17 @@ import { verifySession } from '@/lib/session';
  * can still render the login page and load its CSS/icons.
  */
 
-const PUBLIC_PATHS = new Set<string>(['/login', '/api/login']);
+/**
+ * `/api/cron/notify` is public to the MIDDLEWARE only — it carries no session
+ * cookie (a cron has no browser). The handler authenticates it itself with a
+ * bearer CRON_SECRET and fails closed when that isn't set, so it is not an open
+ * endpoint; it just authenticates differently from everything else.
+ */
+const PUBLIC_PATHS = new Set<string>([
+  '/login',
+  '/api/login',
+  '/api/cron/notify',
+]);
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -54,7 +64,11 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   // Run on everything except Next internals and public static files.
+  // `sw.js` is excluded for the same reason as the manifest and icons: the
+  // service worker is fetched by the browser without the page's credentials in
+  // some flows, and a redirect to /login instead of JavaScript would silently
+  // break push registration.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|robots.txt).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|robots.txt).*)',
   ],
 };

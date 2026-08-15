@@ -3,6 +3,7 @@ import {
   deleteHabit,
   getHabit,
   setHabitArchived,
+  setHabitNotifyAt,
   updateHabit,
 } from '@/lib/habits';
 import { getHabitStats } from '@/lib/stats';
@@ -10,7 +11,7 @@ import { getCurrentUserId } from '@/lib/auth';
 import { parseId, readJson, unauthorized } from '@/lib/apiRoute';
 import { parseHabitInput } from '@/lib/validate';
 import { getTimezone } from '@/lib/tz';
-import { todayISO } from '@/lib/dates';
+import { isValidClockHM, todayISO } from '@/lib/dates';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,6 +58,31 @@ export async function PATCH(
   ) {
     const archived = Boolean((body as Record<string, unknown>).archived);
     const habit = await setHabitArchived(userId, id, archived);
+    if (!habit) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
+    return NextResponse.json({ habit });
+  }
+
+  // Reminder-time toggle, same precedence idiom as `archived` above: a partial
+  // body carrying only this field must not go through parseHabitInput, which
+  // requires a whole habit.
+  if (
+    body &&
+    typeof body === 'object' &&
+    'notify_at' in (body as Record<string, unknown>)
+  ) {
+    const raw = (body as Record<string, unknown>).notify_at;
+    let notifyAt: string | null;
+    if (raw === null || raw === '') {
+      notifyAt = null;
+    } else if (isValidClockHM(raw)) {
+      notifyAt = raw;
+    } else {
+      return NextResponse.json(
+        { error: 'notify_at must be "HH:MM" or null.' },
+        { status: 400 }
+      );
+    }
+    const habit = await setHabitNotifyAt(userId, id, notifyAt);
     if (!habit) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
     return NextResponse.json({ habit });
   }

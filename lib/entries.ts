@@ -85,6 +85,35 @@ export async function listEntriesForHabitSince(
   );
 }
 
+/**
+ * For each of `habitIds`, the latest date it was marked 'pass' on or before
+ * `date` — or absent from the map when it never has been.
+ *
+ * This is what makes a rolling monthly habit work: its due-ness is "has anything
+ * completed it since its anchor day", which no other schedule kind needs. One
+ * grouped query for the whole screen rather than one per habit, and it's only
+ * called when the user actually has monthly habits.
+ */
+export async function lastPassByHabit(
+  userId: number,
+  habitIds: number[],
+  date: string
+): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (habitIds.length === 0) return out;
+  const rows = await many<{ habit_id: number; last_pass: string }>(
+    `SELECT habit_id, MAX(date) AS last_pass
+       FROM entries
+      WHERE user_id = $1 AND habit_id = ANY($2) AND status = 'pass' AND date <= $3
+      GROUP BY habit_id`,
+    [userId, habitIds, date]
+  );
+  for (const r of rows) {
+    if (r.last_pass) out.set(r.habit_id, r.last_pass);
+  }
+  return out;
+}
+
 /** Set (create or overwrite) the pass/fail status for a (habit, date). */
 export async function setEntry(
   userId: number,

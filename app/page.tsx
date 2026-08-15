@@ -7,10 +7,17 @@ import AnkiSummary from '@/components/AnkiSummary';
 import ScheduledHabitRow from '@/components/ScheduledHabitRow';
 import AccountMenu from '@/components/AccountMenu';
 import { listActiveHabits } from '@/lib/habits';
-import { statusMapForDate, listEntriesForDateRange } from '@/lib/entries';
-import { listExceptionsForDate } from '@/lib/exceptions';
+import {
+  statusMapForDate,
+  listEntriesForDateRange,
+  lastPassByHabit,
+} from '@/lib/entries';
+import {
+  listExceptionsForDate,
+  lastHabitExceptionByRef,
+} from '@/lib/exceptions';
 import { getCurrentStreaksBatch } from '@/lib/stats';
-import { isDueOn, weekStartOf } from '@/lib/schedule';
+import { isDueOnScreen, monthlyOverdueDays, weekStartOf } from '@/lib/schedule';
 import { getPushupState } from '@/lib/pushups';
 import { getPullupState } from '@/lib/pullups';
 import { listRepProgramStates, listRepPrograms } from '@/lib/repPrograms';
@@ -92,13 +99,48 @@ export default async function TodayPage({
       getUsername(userId),
     ]);
 
+  // A rolling monthly habit stays due until it's actually settled, so — alone
+  // among the kinds — it needs history to answer "is it due today". Two grouped
+  // queries cover every monthly habit and only run when there are any.
+  //
+  // Capped at `min(selected, today)`: on a future preview day we must not read
+  // records that don't exist yet, and a rest day planned inside the 90-day
+  // window must never reach back and cancel an obligation that is open now.
+  const monthlyHabits = allHabits.filter((h) => h.schedule.kind === 'monthly');
+  const settledCap = compareISO(selected, today) > 0 ? today : selected;
+  const monthlyIds = monthlyHabits.map((h) => h.id);
+  const [lastPass, lastRest] =
+    monthlyHabits.length > 0
+      ? await Promise.all([
+          lastPassByHabit(userId, monthlyIds, settledCap),
+          lastHabitExceptionByRef(userId, monthlyIds, settledCap),
+        ])
+      : [new Map<number, string>(), new Map<number, string>()];
+
+  // Whichever came later closes the cycle — a month you excused is as settled as
+  // a month you did.
+  const lastSettledFor = (id: number): string | null => {
+    const p = lastPass.get(id) ?? null;
+    const r = lastRest.get(id) ?? null;
+    if (p && r) return compareISO(p, r) >= 0 ? p : r;
+    return p ?? r;
+  };
+
   // Show a habit only on days it's due: daily/weekly every day, weekdays/interval
-  // only on their scheduled days (isDueOn also enforces start_date >= selected).
+  // only on their scheduled days, monthly from its anchor day until it's done or
+  // excused (isDueOnScreen also enforces start_date >= selected).
   // An ended habit (end_date set) drops off the board after its end date.
   const dueHabits = allHabits.filter(
     (h) =>
-      isDueOn(h.schedule, h.start_date, selected) &&
-      (h.end_date === null || compareISO(selected, h.end_date) <= 0)
+      isDueOnScreen({
+        schedule: h.schedule,
+        startDate: h.start_date,
+        date: selected,
+        today,
+        lastSettled: lastSettledFor(h.id),
+        hasRecordOnDate:
+          statusMap.has(h.id) || exceptionMap.has(`habit:${h.id}`),
+      }) && (h.end_date === null || compareISO(selected, h.end_date) <= 0)
   );
   const domains = new Set(domainsList.map((d) => d.domain));
   // Weekly-count habits show this week's progress ("2 / 3 this week"); the extra
@@ -146,6 +188,16 @@ export default async function TodayPage({
         : undefined,
     excepted: exceptionMap.has(`habit:${habit.id}`),
     exceptionReason: exceptionMap.get(`habit:${habit.id}`) ?? null,
+    // Only meaningful up to today — a future preview day isn't "overdue".
+    overdueDays:
+      compareISO(selected, today) > 0
+        ? 0
+        : monthlyOverdueDays(
+            habit.schedule,
+            habit.start_date,
+            selected,
+            lastSettledFor(habit.id)
+          ),
   }));
 
   const prevDate = addDays(selected, -1);

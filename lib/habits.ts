@@ -114,6 +114,29 @@ export async function setHabitArchived(
   return getHabit(userId, id);
 }
 
+/**
+ * Set (or clear, with null) this habit's daily reminder time, 'HH:MM' in the
+ * owner's local zone. Clearing also wipes `last_notified_date` so that turning
+ * reminders back on later can't be suppressed by a stale stamp from today.
+ * Returns the fresh row, or undefined when the habit isn't the user's.
+ */
+export async function setHabitNotifyAt(
+  userId: number,
+  id: number,
+  notifyAt: string | null
+): Promise<Habit | undefined> {
+  const changed = await run(
+    `UPDATE habits
+        SET notify_at = $1,
+            last_notified_date = CASE WHEN $1::text IS NULL
+                                      THEN NULL ELSE last_notified_date END
+      WHERE id = $2 AND user_id = $3`,
+    [notifyAt, id, userId]
+  );
+  if (changed === 0) return undefined;
+  return getHabit(userId, id);
+}
+
 /** Delete a habit. Its entries cascade away via the FK. True if removed. */
 export async function deleteHabit(userId: number, id: number): Promise<boolean> {
   const removed =

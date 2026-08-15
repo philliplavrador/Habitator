@@ -78,6 +78,26 @@ export function todayISO(tz: string): string {
   return `${year}-${pad2(month)}-${pad2(day)}`;
 }
 
+/**
+ * The current wall-clock time in `tz`, as "HH:MM" (24-hour, zero-padded).
+ *
+ * The reminder sender compares this against a habit's `notify_at` to decide
+ * whether its time has come for that user today. Same Intl-based primitive as
+ * {@link todayISO}, so it agrees with the day boundary exactly — including
+ * across DST, where the two must not disagree about which day it is.
+ */
+export function localClockHM(tz: string): string {
+  const { hour, minute } = zonedParts(new Date(), tz);
+  return `${pad2(hour)}:${pad2(minute)}`;
+}
+
+/** True if `s` is a "HH:MM" 24-hour clock time. */
+export function isValidClockHM(s: unknown): s is string {
+  if (typeof s !== 'string' || !/^\d{2}:\d{2}$/.test(s)) return false;
+  const [h, m] = s.split(':').map(Number);
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59;
+}
+
 /** True if `s` is a well-formed, real calendar date in YYYY-MM-DD form. */
 export function isValidISODate(s: unknown): s is string {
   if (typeof s !== 'string' || !ISO_RE.test(s)) return false;
@@ -105,6 +125,33 @@ export function addDays(iso: string, n: number): string {
 /** -1 if a<b, 0 if equal, 1 if a>b. Plain lexical compare works for ISO dates. */
 export function compareISO(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Number of days in the given month (1-based month), leap years included. */
+export function daysInMonth(year: number, month: number): number {
+  // Day 0 of the NEXT month is the last day of this one.
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * The most recent occurrence of monthly anchor day `day` on or before `date`.
+ *
+ * `day` is 1..28, or 31 meaning "the last day of the month" (see MONTHLY_LAST in
+ * lib/schedule.ts). 29 and 30 are deliberately not accepted upstream: they would
+ * have to silently clamp in February, which makes "the 30th" mean two different
+ * things depending on the month.
+ *
+ * Pure calendar arithmetic on the string's parts — never a round-trip through a
+ * clock — so no timezone or DST can shift which day this reports.
+ */
+export function monthlyAnchorOnOrBefore(date: string, day: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const anchorThis = Math.min(day, daysInMonth(y, m));
+  if (d >= anchorThis) return `${y}-${pad2(m)}-${pad2(anchorThis)}`;
+  // Before this month's anchor → the previous month's (rolls the year at Jan).
+  const py = m === 1 ? y - 1 : y;
+  const pm = m === 1 ? 12 : m - 1;
+  return `${py}-${pad2(pm)}-${pad2(Math.min(day, daysInMonth(py, pm)))}`;
 }
 
 /** Day of week for an ISO date: 0=Sunday … 6=Saturday. */

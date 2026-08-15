@@ -9,7 +9,12 @@ import {
   apiUpdateHabit,
 } from '@/lib/client';
 import { todayISO } from '@/lib/dates';
-import { WEEKDAY_LABELS } from '@/lib/schedule';
+import {
+  DAILY,
+  MONTHLY_LAST,
+  WEEKDAY_LABELS,
+  ordinalDay,
+} from '@/lib/schedule';
 import type { Habit, HabitKind, Schedule, ScheduleKind } from '@/lib/types';
 import Button from '@/components/ui/Button';
 import { Field, Textarea } from '@/components/ui/Field';
@@ -52,6 +57,12 @@ export default function AddHabitForm({ habit, tz, initialKind }: Props) {
   const [weeklyCount, setWeeklyCount] = useState<number>(
     initSchedule.kind === 'weekly' ? initSchedule.count : 3
   );
+  // Anchor day for a rolling monthly habit: 1–28, or MONTHLY_LAST for "last day
+  // of the month". 29/30 are excluded on purpose — they'd have to clamp in
+  // February, making the label a lie two months of the year.
+  const [monthDay, setMonthDay] = useState<number>(
+    initSchedule.kind === 'monthly' ? initSchedule.day : 1
+  );
 
   const [details, setDetails] = useState(habit?.details ?? '');
   const [exceptions, setExceptions] = useState(habit?.exceptions ?? '');
@@ -86,16 +97,33 @@ export default function AddHabitForm({ habit, tz, initialKind }: Props) {
       return;
     }
     // Assemble the schedule (build habits only; quit is always daily).
-    const schedule: Schedule =
-      kind === 'quit'
-        ? { kind: 'daily' }
-        : scheduleKind === 'weekdays'
-          ? { kind: 'weekdays', days: weekdays }
-          : scheduleKind === 'interval'
-            ? { kind: 'interval', every: interval }
-            : scheduleKind === 'weekly'
-              ? { kind: 'weekly', count: weeklyCount }
-              : { kind: 'daily' };
+    // A switch with an exhaustive default, NOT a ternary chain: the chain this
+    // replaced ended in an unconditional `{ kind: 'daily' }`, so a kind nobody
+    // had wired up here was silently saved as daily instead of failing loudly —
+    // and TypeScript couldn't see it. `assertNever` makes the next kind added a
+    // compile error.
+    const schedule: Schedule = kind === 'quit' ? DAILY : buildSchedule();
+
+    function buildSchedule(): Schedule {
+      switch (scheduleKind) {
+        case 'daily':
+          return DAILY;
+        case 'weekdays':
+          return { kind: 'weekdays', days: weekdays };
+        case 'interval':
+          return { kind: 'interval', every: interval };
+        case 'weekly':
+          return { kind: 'weekly', count: weeklyCount };
+        case 'monthly':
+          return { kind: 'monthly', day: monthDay };
+      }
+      return assertNever(scheduleKind);
+    }
+
+    /** Compile error if a ScheduleKind is ever left unhandled above. */
+    function assertNever(x: never): never {
+      throw new Error(`Unhandled schedule kind: ${JSON.stringify(x)}`);
+    }
     if (schedule.kind === 'weekdays' && schedule.days.length === 0) {
       setError('Pick at least one day of the week.');
       return;
@@ -199,6 +227,7 @@ export default function AddHabitForm({ habit, tz, initialKind }: Props) {
               { value: 'weekdays', label: 'Days' },
               { value: 'interval', label: 'Interval' },
               { value: 'weekly', label: 'Weekly' },
+              { value: 'monthly', label: 'Monthly' },
             ]}
             value={scheduleKind}
             onChange={setScheduleKind}
@@ -275,6 +304,38 @@ export default function AddHabitForm({ habit, tz, initialKind }: Props) {
                   weeklyCount === 1 ? 'day' : 'days'
                 } each week. A week under target breaks the streak.`}
               />
+            </div>
+          )}
+
+          {scheduleKind === 'monthly' && (
+            <div className="mt-3">
+              <label
+                htmlFor="month-day"
+                className="mb-1.5 block text-sm font-medium text-text-secondary"
+              >
+                Day of the month
+              </label>
+              <select
+                id="month-day"
+                value={monthDay}
+                onChange={(e) => setMonthDay(Number(e.target.value))}
+                className="h-11 w-full rounded-btn border border-border bg-surface2 px-3 text-sm text-text-primary"
+              >
+                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    {ordinalDay(d)}
+                  </option>
+                ))}
+                <option value={MONTHLY_LAST}>Last day of the month</option>
+              </select>
+              <p className="mt-2 text-xs text-text-muted">
+                Due on the{' '}
+                {monthDay === MONTHLY_LAST
+                  ? 'last day of each month'
+                  : ordinalDay(monthDay)}
+                . If you miss it, it stays on your list every day until you do it
+                — it never counts as a miss.
+              </p>
             </div>
           )}
         </div>
