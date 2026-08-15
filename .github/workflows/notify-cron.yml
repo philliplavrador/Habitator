@@ -1,0 +1,37 @@
+name: Habit reminders
+
+# Fires the push-notification sender. Habitator's own Railway service can't do
+# this: Railway cron runs a service's START COMMAND on a schedule and is
+# explicitly incompatible with long-running web servers, so scheduling it on the
+# app would restart the site every few minutes rather than call the endpoint.
+#
+# The endpoint is idempotent (habits.last_notified_date is stamped per
+# owner-local day), so overlapping or retried runs can't double-send. That
+# matters here because GitHub's scheduler is best-effort and can fire late or
+# bunch up under load.
+on:
+  schedule:
+    # Every 10 minutes. A habit's reminder goes out on the first run at or after
+    # its local time, so this is the worst-case delay — well inside "remind me
+    # around 8pm", and gentler on GitHub's shared scheduler than */5.
+    - cron: '*/10 * * * *'
+  # Lets you fire it by hand from the Actions tab to test.
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger reminder sender
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          # --fail-with-body so a 401/503 fails the job loudly AND shows why,
+          # rather than passing silently and leaving reminders quietly dead.
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 60 \
+            "${APP_URL}/api/cron/notify"
