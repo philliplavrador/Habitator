@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import RepProgramPage from '@/components/RepProgramPage';
+import DomainActions from '@/components/DomainActions';
 import { hasUserDomain } from '@/lib/domains';
 import { requirePageContext } from '@/lib/pageContext';
 import { getPushupState, listPushupSessions } from '@/lib/pushups';
@@ -20,6 +21,7 @@ export default async function PushupsPage() {
       subtitle={(state) => (
         <>A {state.programDays}-day progression to {state.finishLabel}.</>
       )}
+      actions={<DomainActions domain="pushups" label="Pushups" />}
     />
   );
 }

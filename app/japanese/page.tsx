@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import AnkiLogCard from '@/components/AnkiLogCard';
 import AnkiHistory from '@/components/AnkiHistory';
 import RestDayEditor from '@/components/RestDayEditor';
+import DomainActions from '@/components/DomainActions';
 import ProgressBar from '@/components/ProgressBar';
 import Card from '@/components/ui/Card';
 import StatTile from '@/components/ui/StatTile';
@@ -108,6 +109,8 @@ export default async function JapanesePage() {
         startDate={state.startDate}
         today={state.today}
       />
+
+      <DomainActions domain="japanese" label="Japanese (Anki)" />
     </main>
   );
 }

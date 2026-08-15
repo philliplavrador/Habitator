@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import RepProgramPage from '@/components/RepProgramPage';
+import DomainActions from '@/components/DomainActions';
 import { hasUserDomain } from '@/lib/domains';
 import { requirePageContext } from '@/lib/pageContext';
 import { getPullupState, listPullupSessions } from '@/lib/pullups';
@@ -20,6 +21,7 @@ export default async function PullupsPage() {
       subtitle={(state) => (
         <>A {state.programDays}-day progression from 3 × 5 to {state.finishLabel}.</>
       )}
+      actions={<DomainActions domain="pullups" label="Pullups" />}
     />
   );
 }
