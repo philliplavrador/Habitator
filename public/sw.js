@@ -36,6 +36,16 @@ self.addEventListener('push', (event) => {
     // Collapses repeats for the same habit instead of stacking duplicates.
     tag: data.tag || 'habitator',
     renotify: true,
+    // Stay put until it's actually dealt with, rather than fading after a few
+    // seconds. This is what makes it a reminder you have to answer instead of
+    // one you can miss by looking away.
+    //
+    // Platform reality: this flag is what desktop Chrome/Edge need — without it
+    // they auto-dismiss. iOS ignores it, but doesn't need it: a Home Screen web
+    // app's pushes behave like any native app's, sitting on the Lock Screen and
+    // in Notification Center until you clear them. Unsupported browsers ignore
+    // the key, so setting it is free.
+    requireInteraction: true,
     data: { url: data.url || '/' },
   };
 
