@@ -344,6 +344,23 @@ CREATE TABLE IF NOT EXISTS agent_memory (
   created_at TEXT    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_agent_memory_user ON agent_memory (user_id);
+
+-- Files the user attaches to a chat message: photos from the camera or library,
+-- and text-ish files. Images are stored as base64 data URLs, text files as their
+-- decoded text — Railway's filesystem is ephemeral, so the row IS the file.
+-- Like the messages they hang off, attachments are kept forever.
+CREATE TABLE IF NOT EXISTS chat_attachments (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  chat_id    INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+  kind       TEXT    NOT NULL CHECK (kind IN ('image','text')),
+  name       TEXT    NOT NULL DEFAULT '',
+  mime       TEXT    NOT NULL DEFAULT '',
+  data       TEXT    NOT NULL,
+  created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_attachments_message ON chat_attachments (message_id);
 `;
 
 // Backfill the custom-habit opt-in for users who predate `user_domains`: if you

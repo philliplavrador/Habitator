@@ -8,18 +8,27 @@ import { SCHEMA } from '../db';
 import { many, run as dbRun } from '../db';
 import {
   chatComplete,
+  configuredModel,
   type ApiMessage,
+  type ContentPart,
   type ToolDef,
 } from './deepseek';
+import { findModel, resolveEffort, resolveModel, type Effort } from './models';
 import { checkSql } from './sqlGuard';
 import { addMemory, memoryBlock } from './memory';
 import {
+  addAttachments,
   addMessage,
+  attachmentMetaByMessage,
+  attachmentsForMessages,
   createBuildRequest,
   createChat,
   getChat,
   listMessages,
+  type ChatAttachmentMeta,
+  type ChatAttachmentRow,
   type ChatMessageRow,
+  type NewAttachment,
 } from './store';
 import { dispatchBuild } from './dispatch';
 
@@ -87,6 +96,7 @@ Rules:
 - The user is the app's only user (user_id = ${userId}). Their timezone: ${tz}. Today there: ${today}.
 - Data is sacred: never DELETE/DROP anything, in SQL or in build instructions. Removing a feature = hide/archive it; its data stays.
 - Existing screens still live at their old routes (/today, /insights, /fasts, /pushups, /pullups, /japanese, plus /habits/*, /rep-programs/*, /plank-programs/*). They're just unlinked from the home screen. If asked where something went, point at the route or offer to resurface it via build_app.
+- The user can attach photos (camera or library) and text files. Read what's in them and act: log what you can see with run_sql, answer what they ask about it. If a message is only an attachment, say what you see in one line and ask what to do with it — unless it's obviously loggable data, in which case just log it and say so.
 - For questions about their data, prefer run_sql over guessing. Dates in domain tables are TEXT 'YYYY-MM-DD' local days; timestamps are ISO TEXT.
 
 Current database schema:
@@ -95,9 +105,107 @@ ${SCHEMA}
 ${memory ? `Durable memory about the user:\n${memory}` : 'No durable memory saved yet.'}`;
 }
 
-/** Serialize recent history for the model (cap so old chats stay cheap). */
-function toApiHistory(rows: ChatMessageRow[]): ApiMessage[] {
-  return rows.slice(-30).map((m) => ({ role: m.role, content: m.content }));
+// How much of the past rides along. Images are the expensive part (they bill as
+// input tokens by area), so only the newest few are re-sent; older ones degrade
+// to a text placeholder the model can still reason about.
+const HISTORY_MESSAGES = 30;
+const MAX_IMAGES = 6;
+const HISTORY_TEXT_CHARS = 1500;
+const TURN_TEXT_CHARS = 20000;
+
+/** Meta always; `data` only for the attachments we decided to send in full. */
+type MaybeLoaded = ChatAttachmentMeta & { data?: string };
+
+/**
+ * Turn a message's attachments into content parts. An image becomes a data-URL
+ * part when it was loaded and the model can see it, and a one-line placeholder
+ * otherwise — so the model still knows a photo was there. Text files are
+ * inlined under a filename header, truncated so one dump can't eat the window.
+ */
+function attachmentParts(rows: MaybeLoaded[], textChars: number): ContentPart[] {
+  return rows.map((row) => {
+    if (row.kind === 'image') {
+      return row.data
+        ? { type: 'image_url' as const, image_url: { url: row.data } }
+        : { type: 'text' as const, text: `[image attached: ${row.name || 'photo'}]` };
+    }
+    if (!row.data) {
+      return { type: 'text' as const, text: `[file attached: ${row.name || 'file.txt'}]` };
+    }
+    const body = row.data.slice(0, textChars);
+    const cut = row.data.length > body.length ? '\n…[truncated]' : '';
+    return {
+      type: 'text' as const,
+      text: `--- attached file: ${row.name || 'file.txt'} ---\n${body}${cut}`,
+    };
+  });
+}
+
+function countImages(rows: { kind: string }[] | undefined): number {
+  return rows ? rows.filter((r) => r.kind === 'image').length : 0;
+}
+
+/**
+ * Serialize recent history for the model (cap so old chats stay cheap), folding
+ * each message's attachments back in. `loaded` holds the payloads chosen by
+ * planHistoryAttachments; everything else degrades to a placeholder.
+ */
+function toApiHistory(
+  rows: ChatMessageRow[],
+  meta: Map<number, ChatAttachmentMeta[]>,
+  loaded: Map<number, ChatAttachmentRow[]>,
+  withImages: Set<number>
+): ApiMessage[] {
+  return rows.map((row) => {
+    const source: MaybeLoaded[] = loaded.get(row.id) ?? meta.get(row.id) ?? [];
+    if (source.length === 0) return { role: row.role, content: row.content };
+    // A loaded message can still be over the image budget — keep its files,
+    // drop the pixels.
+    const atts = withImages.has(row.id)
+      ? source
+      : source.map((a) => (a.kind === 'image' ? { ...a, data: undefined } : a));
+    const parts: ContentPart[] = [];
+    if (row.content) parts.push({ type: 'text', text: row.content });
+    parts.push(...attachmentParts(atts, HISTORY_TEXT_CHARS));
+    return { role: row.role, content: parts };
+  });
+}
+
+/**
+ * Which past messages' attachments are worth re-sending: images newest-first
+ * until the budget runs out (they bill by area, so older photos degrade to
+ * placeholders), plus any message carrying a text file, which is cheap.
+ */
+function planHistoryAttachments(
+  rows: ChatMessageRow[],
+  meta: Map<number, ChatAttachmentMeta[]>,
+  imageBudget: number
+): { ids: number[]; withImages: Set<number> } {
+  const ids: number[] = [];
+  const withImages = new Set<number>();
+  let budget = imageBudget;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const atts = meta.get(rows[i].id);
+    if (!atts || atts.length === 0) continue;
+    const images = countImages(atts);
+    const hasFiles = atts.length > images;
+    if (images > 0 && images <= budget) {
+      withImages.add(rows[i].id);
+      budget -= images;
+      ids.push(rows[i].id);
+    } else if (hasFiles) {
+      ids.push(rows[i].id);
+    }
+  }
+  return { ids, withImages };
+}
+
+export interface TurnOptions {
+  attachments?: NewAttachment[];
+  /** Model id the user picked; ignored unless it's in the catalog. */
+  model?: unknown;
+  /** Reasoning effort the user picked ('off' | 'low' | 'high' | 'max'). */
+  effort?: unknown;
 }
 
 export interface TurnResult {
@@ -105,6 +213,10 @@ export interface TurnResult {
   userMessage: ChatMessageRow;
   reply: ChatMessageRow;
   buildQueued: boolean;
+  /** What actually ran — images silently reroute to the vision model. */
+  model: string;
+  effort: Effort;
+  attachments: ChatAttachmentRow[];
 }
 
 /**
@@ -116,22 +228,58 @@ export async function runTurn(
   tz: string,
   today: string,
   chatId: number | null,
-  text: string
+  text: string,
+  opts: TurnOptions = {}
 ): Promise<TurnResult> {
   // Resolve or create the chat (scoped to the user — getChat returns nothing
   // for someone else's id, and we then refuse rather than write cross-user).
   let chat = chatId !== null ? await getChat(userId, chatId) : undefined;
   if (chatId !== null && !chat) throw new Error('Chat not found.');
-  if (!chat) chat = await createChat(userId, text);
+  if (!chat) chat = await createChat(userId, text || opts.attachments?.[0]?.name || 'Attachment');
 
-  const history = await listMessages(userId, chat.id);
+  const history = (await listMessages(userId, chat.id)).slice(-HISTORY_MESSAGES);
   const userMessage = await addMessage(userId, chat.id, 'user', text);
+  const incoming = opts.attachments ?? [];
+  const stored = incoming.length
+    ? await addAttachments(userId, chat.id, userMessage.id, incoming)
+    : [];
+
+  // Metadata first — a chat's photos are megabytes of base64, and most turns
+  // need none of them.
+  const meta = await attachmentMetaByMessage(userId, chat.id);
+
+  // Any image in play — this turn's or a recent one's — forces the vision
+  // model; a photo on a text-only model is just a dropped question.
+  const turnImages = countImages(stored);
+  const historyImages = history.some((row) => countImages(meta.get(row.id)) > 0);
+  const model = resolveModel(opts.model, configuredModel(), turnImages > 0 || historyImages);
+  const effort = resolveEffort(opts.effort);
+  const canSeeImages = findModel(model)?.vision ?? false;
+
+  const plan = planHistoryAttachments(
+    history,
+    meta,
+    canSeeImages ? Math.max(0, MAX_IMAGES - turnImages) : 0
+  );
+  const loaded = await attachmentsForMessages(userId, chat.id, plan.ids);
+
+  const turnParts: ContentPart[] = stored.length
+    ? [
+        ...(text ? [{ type: 'text' as const, text }] : []),
+        ...attachmentParts(
+          canSeeImages
+            ? stored
+            : stored.map((a) => (a.kind === 'image' ? { ...a, data: undefined } : a)),
+          TURN_TEXT_CHARS
+        ),
+      ]
+    : [];
 
   const memory = await memoryBlock(userId);
   const messages: ApiMessage[] = [
     { role: 'system', content: systemPrompt(userId, tz, today, memory) },
-    ...toApiHistory(history),
-    { role: 'user', content: text },
+    ...toApiHistory(history, meta, loaded, plan.withImages),
+    { role: 'user', content: turnParts.length > 0 ? turnParts : text },
   ];
 
   let buildId: number | undefined;
@@ -139,7 +287,7 @@ export async function runTurn(
 
   // Tool loop — bounded so a confused model can't spin forever.
   for (let i = 0; i < 6; i++) {
-    const result = await chatComplete(messages, TOOLS);
+    const result = await chatComplete(messages, TOOLS, { model, effort });
 
     if (result.toolCalls.length === 0) {
       finalText = result.content.trim();
@@ -175,7 +323,15 @@ export async function runTurn(
   }
 
   const reply = await addMessage(userId, chat.id, 'assistant', finalText, buildId);
-  return { chatId: chat.id, userMessage, reply, buildQueued: buildId !== undefined };
+  return {
+    chatId: chat.id,
+    userMessage,
+    reply,
+    buildQueued: buildId !== undefined,
+    model,
+    effort,
+    attachments: stored,
+  };
 }
 
 async function execTool(
