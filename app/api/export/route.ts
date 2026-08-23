@@ -29,6 +29,7 @@ export async function GET() {
     ankiDays,
     userDomains,
     streakExceptions,
+    tasks,
   ] = await Promise.all([
     many('SELECT * FROM habits WHERE user_id = $1 ORDER BY id ASC', [userId]),
     many(
@@ -68,6 +69,9 @@ export async function GET() {
       'SELECT * FROM streak_exceptions WHERE user_id = $1 ORDER BY scope ASC, ref ASC, date ASC',
       [userId]
     ),
+    many('SELECT * FROM tasks WHERE user_id = $1 ORDER BY date ASC, id ASC', [
+      userId,
+    ]),
   ]);
 
   // Backup envelope. `version` and the table list below are coupled to the DB
@@ -87,10 +91,11 @@ export async function GET() {
   // plankPrograms + plankProgramSessions. version 14 added streakExceptions — the
   // per-tracker rest days that bridge a streak across a missed day. version 15
   // added streak_exceptions.reason — the optional note on why a day was excused
-  // (SELECT * already carries it through).)
+  // (SELECT * already carries it through). version 16 added tasks — the
+  // daily one-off to-dos that carry over when unfinished.)
   const payload = {
     app: 'habitator',
-    version: 15,
+    version: 16,
     exportedAt: new Date().toISOString(),
     habits,
     entries,
@@ -104,6 +109,7 @@ export async function GET() {
     ankiDays,
     userDomains,
     streakExceptions,
+    tasks,
   };
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

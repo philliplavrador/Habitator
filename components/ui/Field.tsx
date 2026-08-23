@@ -1,6 +1,6 @@
 'use client';
 
-import { useId } from 'react';
+import { forwardRef, useId } from 'react';
 import type { ComponentPropsWithoutRef, ReactNode } from 'react';
 
 const fieldBase =
@@ -43,14 +43,22 @@ function Meta({ error, hint, footer }: Pick<Shared, 'error' | 'hint' | 'footer'>
 type InputProps = Shared &
   Omit<ComponentPropsWithoutRef<'input'>, keyof Shared> & { id?: string };
 
-/** Labeled text/number/date input built on the shared field style. */
-export function Field({ label, hint, error, footer, id, className, ...rest }: InputProps) {
+/**
+ * Labeled text/number/date input built on the shared field style. Forwards its
+ * ref to the underlying `<input>` so callers can focus it (the tasks add-row
+ * puts the cursor back after each add).
+ */
+export const Field = forwardRef<HTMLInputElement, InputProps>(function Field(
+  { label, hint, error, footer, id, className, ...rest },
+  ref
+) {
   const autoId = useId();
   const inputId = id ?? autoId;
   return (
     <div>
       {label && <Label htmlFor={inputId}>{label}</Label>}
       <input
+        ref={ref}
         id={inputId}
         className={`${fieldBase} ${error ? 'border-fail focus:border-fail' : ''} ${className ?? ''}`}
         aria-invalid={error ? true : undefined}
@@ -59,7 +67,7 @@ export function Field({ label, hint, error, footer, id, className, ...rest }: In
       <Meta error={error} hint={hint} footer={footer} />
     </div>
   );
-}
+});
 
 type TextareaProps = Shared &
   Omit<ComponentPropsWithoutRef<'textarea'>, keyof Shared> & { id?: string };

@@ -433,3 +433,32 @@ export interface AnkiState {
 
   daysLogged: number; // count of logged days
 }
+
+// ── Daily tasks ─────────────────────────────────────────────────────
+
+/**
+ * A one-off to-do pinned to a single day. Mirrors the `tasks` row (lib/db.ts).
+ * Unlike a habit it isn't scheduled or scored — it's done once and then it's
+ * off the board — and an unfinished one ROLLS FORWARD to the next day (see
+ * `carried_from` and lib/tasks.ts).
+ */
+export interface Task {
+  id: number;
+  title: string;
+  notes: string;
+  date: string; // YYYY-MM-DD — the day it currently sits on
+  at_time: string | null; // 'HH:MM' owner-local, or null = untimed
+  done: number; // 0 | 1 (INTEGER flag, like the rest of the schema)
+  done_at: string | null; // ISO timestamp when checked off
+  carried_from: string | null; // the day it was FIRST planned for; null = never rolled
+  sort_order: number;
+  created_at: string; // ISO timestamp
+}
+
+/** Validated create/update payload for a task (see lib/validate.ts). */
+export interface TaskInput {
+  title: string;
+  notes: string;
+  date: string; // YYYY-MM-DD
+  at_time: string | null; // 'HH:MM' or null
+}

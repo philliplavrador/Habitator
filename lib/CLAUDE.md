@@ -38,6 +38,13 @@ touching a query, a streak, or the migration.
 
 **Domain CRUD (every function takes `userId` first, scopes every query)**
 - `habits.ts`, `entries.ts`, `fasts.ts`, `anki.ts`
+- `tasks.ts` — the `/tasks` day board (one-off to-dos, not habits). `rollOverTasks`
+  is the carry-over sweep: it UPDATEs every `done = 0` task with `date < today`
+  onto today and `COALESCE`s `carried_from` to the day it was first planned for.
+  Call it before any read of a day's tasks (the page and `GET /api/tasks` both
+  do) — it's lazy on purpose, so there's no cron to keep alive. It reaches only
+  backward and only at open tasks, which is what keeps a future-dated task
+  parked and a completed one pinned to the day it was done.
 - Rep programs are a generic engine, not per-program CRUD:
   `repProgram.ts` (the engine: `createRepProgram(config)`) + `repRoute.ts` (HTTP
   handler factories) + tiny config modules `pushups.ts` / `pullups.ts`.

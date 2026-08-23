@@ -13,6 +13,8 @@ import type {
   RepProgramRow,
   RepProgramState,
   StartFastInput,
+  Task,
+  TaskInput,
   UpdateFastInput,
 } from './types';
 
@@ -440,4 +442,23 @@ export async function apiUpdateAnkiDay(id: number, newCards: number): Promise<An
 
 export async function apiDeleteAnkiDay(id: number): Promise<AnkiState> {
   return requestJson<AnkiState>(`/api/anki/${id}`, 'DELETE', 'state');
+}
+
+// ── Daily tasks ─────────────────────────────────────────────────────
+
+export async function apiCreateTask(input: TaskInput): Promise<Task> {
+  return requestJson<Task>('/api/tasks', 'POST', 'task', input);
+}
+
+export async function apiUpdateTask(id: number, input: TaskInput): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${id}`, 'PATCH', 'task', input);
+}
+
+/** Check a task off (or un-check it). Returns the fresh row. */
+export async function apiSetTaskDone(id: number, done: boolean): Promise<Task> {
+  return requestJson<Task>(`/api/tasks/${id}`, 'PATCH', 'task', { done });
+}
+
+export async function apiDeleteTask(id: number): Promise<void> {
+  await request(`/api/tasks/${id}`, 'DELETE');
 }

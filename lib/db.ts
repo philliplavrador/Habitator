@@ -201,6 +201,41 @@ CREATE TABLE IF NOT EXISTS user_domains (
 );
 CREATE INDEX IF NOT EXISTS idx_user_domains_user ON user_domains (user_id);
 
+-- ── Daily tasks ───────────────────────────────────────────────────────
+-- One-off to-dos for a specific day, orthogonal to habits: a habit recurs on a
+-- schedule and is scored into streaks; a task is done once and then it's gone
+-- from the board. Added from /tasks or by the chat agent (run_sql), which is
+-- why every column is plain TEXT/INTEGER with no JSON — the model writes these
+-- rows directly.
+--
+-- CARRY-OVER: an unfinished task rolls to the next day rather than being missed.
+-- It is a real UPDATE of the date column (lazily, on the first read of the day
+-- -- see lib/tasks.ts rollOverTasks), not a display trick, so a task lives on
+-- exactly ONE day and a plain "WHERE date = ..." read stays honest.
+-- carried_from freezes the day it was FIRST planned for (COALESCE'd on the
+-- first roll, so repeated rolls never overwrite it); NULL means never slipped.
+--
+-- at_time is 'HH:MM' in the owner's local zone, or NULL for an untimed task. It
+-- is named at_time rather than "time" because time is a type name in Postgres
+-- and would need quoting in every hand-written statement -- including the ones
+-- the chat model composes.
+CREATE TABLE IF NOT EXISTS tasks (
+  id           SERIAL PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title        TEXT    NOT NULL,
+  notes        TEXT    NOT NULL DEFAULT '',
+  date         TEXT    NOT NULL,            -- YYYY-MM-DD (owner-local day it's planned for)
+  at_time      TEXT,                        -- 'HH:MM' owner-local, or NULL = untimed
+  done         INTEGER NOT NULL DEFAULT 0,  -- 0/1 flag, like the other tables
+  done_at      TEXT,                        -- ISO timestamp when it was checked off
+  carried_from TEXT,                        -- YYYY-MM-DD it was first planned for; NULL = never rolled
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_user_date ON tasks (user_id, date);
+-- The roll-over sweep: every open task strictly before today, for one user.
+CREATE INDEX IF NOT EXISTS idx_tasks_user_open ON tasks (user_id, done, date);
+
 -- Global key/value store for one-time bootstraps (e.g. the SQLite→Postgres
 -- migration flag). Not user-scoped.
 CREATE TABLE IF NOT EXISTS app_meta (

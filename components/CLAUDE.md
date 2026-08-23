@@ -38,6 +38,12 @@ composition of what's already here.
   manual fallback). Owned by `RepProgramCard`, which toggles between it ("Record")
   and manual entry ("Type reps", with an optional video per set).
 - `BackHeader` — the chevron back-link page header.
+- `TasksClient` — the `/tasks` day board: add row, check-off, and the inline
+  edit panel (title / time / day / notes / delete). Its `sortTasks` mirrors the
+  server's `ORDER BY` exactly (timed first by clock, then manual order) so an
+  optimistic insert lands where a refresh would put it; keep the two in step.
+  The day's "N to do · N done" line lives here, not on the server page, so it
+  tracks edits without a round trip.
 
 ## Rules
 

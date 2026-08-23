@@ -50,6 +50,14 @@ they set cookies — and aren't cached).
   `'Bad date.'` for its query params)
 - not found → `404 { error: '… not found.' }`
 
+## tasks/** — the daily task board
+`GET /api/tasks?date=` (defaults to today), `POST /api/tasks`,
+`PATCH /api/tasks/[id]` (a `done` body toggles the check-off, anything else is a
+full edit — same precedence idiom as `archived` on habits), `DELETE
+/api/tasks/[id]`. The GET runs `rollOverTasks` **before** it lists, so every
+entry point into the tasks data performs the lazy carry-over sweep; add the same
+call to any new tasks read. Validation is `parseTaskInput` (`lib/validate.ts`).
+
 ## domains/** — the built-in custom-habit opt-in
 `GET/POST /api/domains` and `DELETE /api/domains/[domain]` manage which built-in
 custom habits (`pushups` | `pullups` | `japanese`) a user has, via

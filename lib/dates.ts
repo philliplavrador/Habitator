@@ -98,6 +98,18 @@ export function isValidClockHM(s: unknown): s is string {
   return h >= 0 && h <= 23 && m >= 0 && m <= 59;
 }
 
+/**
+ * Render an "HH:MM" 24-hour clock time as a friendly 12-hour label, e.g.
+ * "09:30" → "9:30 AM". Pure string work on an already-local wall-clock string
+ * (a task's `at_time` is stored in the owner's zone), so no Date/zone involved.
+ */
+export function formatClockHM(hm: string): string {
+  const [h, m] = hm.split(':').map(Number);
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${pad2(m)} ${ampm}`;
+}
+
 /** True if `s` is a well-formed, real calendar date in YYYY-MM-DD form. */
 export function isValidISODate(s: unknown): s is string {
   if (typeof s !== 'string' || !ISO_RE.test(s)) return false;

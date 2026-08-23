@@ -69,7 +69,7 @@ to realign local.
 Next.js 14 App Router + TypeScript. Single signed-cookie auth; `middleware.ts`
 gates every route (verifies the session **signature** at the edge — it does not
 decode the uid, so handlers/pages resolve it themselves). Domains: habits,
-fasts, pushups, pullups, japanese/anki.
+fasts, pushups, pullups, japanese/anki, plus **daily tasks**.
 
 **UI framing — the app is chat-first and self-modifying.** Home (`/`) is an
 LLM chatbox (`components/chat/ChatScreen.tsx`), the app's ONE fixed piece of
@@ -77,12 +77,27 @@ UI. It answers questions about the owner's data, logs things, and — via a
 GitHub Actions coding agent — rewrites the app itself on request (spec:
 `docs/superpowers/specs/2026-08-23-chat-first-self-modifying-app-design.md`,
 agent brief: `AGENT.md`, chat/build plumbing: `lib/agent/`). There is no bottom
-nav. All legacy screens still exist and work, just unlinked from home: the old
+nav — the one route link on home is a checklist icon to `/tasks`. All legacy
+screens still exist and work, just unlinked from home: the old
 Today screen at `/today`, plus `/insights`, `/fasts`, `/pushups`, `/pullups`,
 `/japanese`, `/habits/*`, `/rep-programs/*`, `/plank-programs/*`. Within those
 legacy screens the old framing holds — pushups/pullups/japanese present as
 custom habits inline on the Today list (`widgets` prop), with full screens
 reached via each widget's "Open →" link:
+
+**Daily tasks are not habits.** `/tasks` (`app/tasks/page.tsx` +
+`components/TasksClient.tsx`, data in `lib/tasks.ts`) is a per-day board of
+one-off to-dos: a title, an optional `at_time` (`HH:MM`, owner-local), an
+optional day up to `MAX_FUTURE_DAYS` ahead. They're never scheduled or scored —
+no streaks, no `entries`. The load-bearing behaviour is **carry-over**: an
+unfinished task is *rewritten* onto today (`rollOverTasks`, run lazily on every
+read of the tasks data), stamping `carried_from` with the day it was first
+planned for. It's a real UPDATE, not a `date <= today` query, so a task lives on
+exactly one day and the chat agent's hand-written `WHERE date = …` reads stay
+correct. It only reaches backward — a task parked in the future stays parked —
+and only touches `done = 0` rows, so a completed task never drifts. **The chat
+adds and completes tasks itself** via `run_sql` (the system prompt in
+`lib/agent/chat.ts` documents the INSERT and the date/time resolution).
 
 **Custom habits are opt-in, not seeded.** Nothing domain-specific is created
 with an account. Adding a habit (`/habits/new`, `NewHabitFlow`) is three steps:

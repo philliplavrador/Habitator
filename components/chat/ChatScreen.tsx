@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { m } from 'framer-motion';
+import Link from 'next/link';
 import AccountMenu from '@/components/AccountMenu';
 import Sheet from '@/components/ui/Sheet';
 import SegmentedControl from '@/components/ui/SegmentedControl';
@@ -348,6 +349,16 @@ export default function ChatScreen({ username, initialChats }: Props) {
         </button>
         <h1 className="font-display text-lg font-bold">Habitator</h1>
         <div className="flex items-center gap-2">
+          {/* The one route link on the home screen. The chat is still the front
+              door (no bottom nav), but the day's tasks are a place you go back
+              to constantly — worth a tap rather than a typed URL. */}
+          <Link
+            href="/tasks"
+            aria-label="Tasks"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-text-secondary active:bg-surface2"
+          >
+            <TasksIcon />
+          </Link>
           <button
             type="button"
             onClick={newChat}
@@ -686,6 +697,15 @@ function HistoryIcon() {
       <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
       <path d="M3 3v5h5" />
       <path d="M12 7v5l3 3" />
+    </svg>
+  );
+}
+
+/** Checklist glyph for the /tasks link in the header. */
+function TasksIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m3 7 2 2 3.5-3.5M3 17l2 2 3.5-3.5M12 7h9M12 17h9" />
     </svg>
   );
 }

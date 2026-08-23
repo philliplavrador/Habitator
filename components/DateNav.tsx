@@ -8,14 +8,22 @@ interface Props {
   nextDate: string | null;
   /** Today in the owner's timezone (resolved on the server). */
   today: string;
+  /** Route the ‹ › links point at; the day rides along as ?date=. */
+  basePath?: string;
 }
 
 /** ‹  Today  ›  — navigates the selected day via ?date= query param. */
-export default function DateNav({ date, prevDate, nextDate, today }: Props) {
+export default function DateNav({
+  date,
+  prevDate,
+  nextDate,
+  today,
+  basePath = '/today',
+}: Props) {
   return (
     <div className="flex items-center justify-between">
       <Link
-        href={`/today?date=${prevDate}`}
+        href={`${basePath}?date=${prevDate}`}
         aria-label="Previous day"
         className="flex h-10 w-10 items-center justify-center rounded-btn border border-border bg-surface text-xl text-text-secondary active:bg-surface2"
       >
@@ -31,7 +39,7 @@ export default function DateNav({ date, prevDate, nextDate, today }: Props) {
 
       {nextDate ? (
         <Link
-          href={`/today?date=${nextDate}`}
+          href={`${basePath}?date=${nextDate}`}
           aria-label="Next day"
           className="flex h-10 w-10 items-center justify-center rounded-btn border border-border bg-surface text-xl text-text-secondary active:bg-surface2"
         >

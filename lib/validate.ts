@@ -1,6 +1,9 @@
 import {
+  MAX_FUTURE_DAYS,
+  addDays,
   compareISO,
   hoursBetween,
+  isValidClockHM,
   isValidISODate,
   isValidTimestamp,
   nowISO,
@@ -11,6 +14,7 @@ import { plankProgramDays } from './plankFormat';
 import type {
   AnkiDayInput,
   HabitInput,
+  TaskInput,
   PlankProgramInput,
   RepProgramInput,
   StartFastInput,
@@ -459,4 +463,56 @@ export function parseNewCardsField(body: unknown): ParseResult<number> {
   const new_cards = parseNewCards(b.new_cards);
   if (new_cards === null) return { ok: false, error: newCardsError };
   return { ok: true, value: new_cards };
+}
+
+// ── Daily tasks ─────────────────────────────────────────────────────
+
+const MAX_TASK_TITLE = 200;
+const MAX_TASK_NOTES = 1000;
+
+/**
+ * Validate/normalize a task create/update payload.
+ * - title is required (trimmed, non-empty, capped)
+ * - notes default to '' and are capped
+ * - date defaults to today (in the owner's `tz`); must be a valid YYYY-MM-DD no
+ *   further ahead than MAX_FUTURE_DAYS — the same forward window the day picker
+ *   allows, so a saved task is always reachable in the UI. A PAST date is fine:
+ *   the next read rolls it onto today (see lib/tasks.ts rollOverTasks).
+ * - at_time is optional: missing/blank/null ⇒ null (untimed), else 'HH:MM'
+ */
+export function parseTaskInput(body: unknown, tz: string): ParseResult<TaskInput> {
+  const b = asObject(body);
+  if (!b) return { ok: false, error: 'Expected a JSON object.' };
+
+  const title = asString(b.title).trim();
+  if (title.length === 0) return { ok: false, error: 'Title is required.' };
+  if (title.length > MAX_TASK_TITLE) return { ok: false, error: 'Title is too long.' };
+
+  const notes = asString(b.notes).trim();
+  if (notes.length > MAX_TASK_NOTES) return { ok: false, error: 'Notes are too long.' };
+
+  const today = todayISO(tz);
+  const rawDate = asString(b.date).trim();
+  const date = rawDate === '' ? today : rawDate;
+  if (!isValidISODate(date)) {
+    return { ok: false, error: 'date must be a valid YYYY-MM-DD date.' };
+  }
+  if (compareISO(date, addDays(today, MAX_FUTURE_DAYS)) > 0) {
+    return {
+      ok: false,
+      error: `date can't be more than ${MAX_FUTURE_DAYS} days ahead.`,
+    };
+  }
+
+  const rawTime = b.at_time;
+  let at_time: string | null;
+  if (rawTime === null || rawTime === undefined || rawTime === '') {
+    at_time = null;
+  } else if (isValidClockHM(rawTime)) {
+    at_time = rawTime;
+  } else {
+    return { ok: false, error: 'at_time must be "HH:MM" or null.' };
+  }
+
+  return { ok: true, value: { title, notes, date, at_time } };
 }
