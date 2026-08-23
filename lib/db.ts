@@ -29,7 +29,9 @@ import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 // requirements, not un-modernized SQLite leftovers: the one-time importer copies
 // these values across byte-for-byte, so they must NOT be "upgraded" to
 // boolean/jsonb. See lib/migrate.ts.
-const SCHEMA = `
+// Exported so the chat agent can inject the live schema into its system prompt
+// (lib/agent/chat.ts) — the model always sees the current shape of the data.
+export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id            SERIAL PRIMARY KEY,
   username      TEXT NOT NULL,
@@ -288,6 +290,60 @@ CREATE INDEX IF NOT EXISTS idx_streak_exc_lookup
 -- via a guarded ALTER because the table above already exists in prod — a bare
 -- CREATE TABLE IF NOT EXISTS never alters it. Nullable, so old rows stay valid.
 ALTER TABLE streak_exceptions ADD COLUMN IF NOT EXISTS reason TEXT;
+
+-- ── Chat + self-building agent ────────────────────────────────────────
+-- The chatbox at / is the app's one constant (see docs/superpowers/specs/
+-- 2026-08-23-chat-first-self-modifying-app-design.md). Chats are saved forever:
+-- the message log doubles as the recovery record for anything the agent later
+-- changes or removes ("where did X go? add it back").
+CREATE TABLE IF NOT EXISTS chats (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title      TEXT    NOT NULL DEFAULT '',
+  created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chats_user ON chats (user_id);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  chat_id    INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  role       TEXT    NOT NULL CHECK (role IN ('user','assistant')),
+  content    TEXT    NOT NULL,
+  build_id   INTEGER,            -- set when this message announces a build
+  created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_chat ON chat_messages (chat_id);
+
+-- One row per build-lane request. The GitHub workflow reports back into this
+-- row via POST /api/agent/callback (shared secret), which also appends the
+-- completion message to the originating chat and fires a web push.
+CREATE TABLE IF NOT EXISTS build_requests (
+  id           SERIAL PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  chat_id      INTEGER REFERENCES chats(id) ON DELETE SET NULL,
+  instructions TEXT    NOT NULL,
+  status       TEXT    NOT NULL DEFAULT 'queued'
+               CHECK (status IN ('queued','running','success','failed')),
+  summary      TEXT    NOT NULL DEFAULT '',
+  commit_sha   TEXT,
+  error        TEXT,
+  created_at   TEXT    NOT NULL,
+  updated_at   TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_build_requests_user ON build_requests (user_id);
+
+-- Durable preferences the chat model records (its own initiative or "remember
+-- X"). Injected into every chat system prompt and every build dispatch — this
+-- is how the agent "learns as it goes".
+CREATE TABLE IF NOT EXISTS agent_memory (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content    TEXT    NOT NULL,
+  source     TEXT    NOT NULL CHECK (source IN ('auto','explicit')),
+  created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_memory_user ON agent_memory (user_id);
 `;
 
 // Backfill the custom-habit opt-in for users who predate `user_domains`: if you

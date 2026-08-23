@@ -3,7 +3,6 @@ import { Inter, Sora, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import TimezoneSync from '@/components/TimezoneSync';
 import Providers from '@/components/providers/Providers';
-import BottomNav from '@/components/BottomNav';
 
 // Self-hosted at build time (served same-origin from /_next/static) — no runtime
 // request to Google, so it works offline/as a PWA with no CSP concern.
@@ -70,7 +69,6 @@ export default function RootLayout({
         <Providers>
           <TimezoneSync />
           <div className="safe-top mx-auto w-full max-w-md px-4">{children}</div>
-          <BottomNav />
         </Providers>
       </body>
     </html>

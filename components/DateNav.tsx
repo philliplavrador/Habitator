@@ -15,7 +15,7 @@ export default function DateNav({ date, prevDate, nextDate, today }: Props) {
   return (
     <div className="flex items-center justify-between">
       <Link
-        href={`/?date=${prevDate}`}
+        href={`/today?date=${prevDate}`}
         aria-label="Previous day"
         className="flex h-10 w-10 items-center justify-center rounded-btn border border-border bg-surface text-xl text-text-secondary active:bg-surface2"
       >
@@ -31,7 +31,7 @@ export default function DateNav({ date, prevDate, nextDate, today }: Props) {
 
       {nextDate ? (
         <Link
-          href={`/?date=${nextDate}`}
+          href={`/today?date=${nextDate}`}
           aria-label="Next day"
           className="flex h-10 w-10 items-center justify-center rounded-btn border border-border bg-surface text-xl text-text-secondary active:bg-surface2"
         >

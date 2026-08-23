@@ -30,10 +30,17 @@ import { verifySession } from '@/lib/session';
  * bearer CRON_SECRET and fails closed when that isn't set, so it is not an open
  * endpoint; it just authenticates differently from everything else.
  */
+/**
+ * `/api/agent/callback` is public to the middleware for the same reason as the
+ * cron route: the caller is the GitHub Actions build runner, which has no
+ * session cookie. The handler authenticates it itself with the shared
+ * AGENT_CALLBACK_SECRET header and fails closed when that isn't set.
+ */
 const PUBLIC_PATHS = new Set<string>([
   '/login',
   '/api/login',
   '/api/cron/notify',
+  '/api/agent/callback',
 ]);
 
 export async function middleware(req: NextRequest) {

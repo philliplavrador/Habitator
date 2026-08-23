@@ -1,0 +1,55 @@
+# Daily safety net for the no-data-loss rule: pg_dump the production database
+# into the PRIVATE repo philliplavrador/habitator-backups (this repo is public —
+# dumps must never land here). Keeps the newest 60 dumps. Protected path — the
+# coding agent may not edit this file.
+name: db-backup
+
+on:
+  schedule:
+    - cron: '17 9 * * *' # daily, 09:17 UTC (~2am Pacific)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install postgresql-client 17
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          yes '' | sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Check out backup repo
+        uses: actions/checkout@v4
+        with:
+          repository: philliplavrador/habitator-backups
+          token: ${{ secrets.BACKUP_TOKEN }}
+          path: backup
+
+      - name: Dump
+        env:
+          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          mkdir -p backup/dumps
+          pg_dump "$PROD_DATABASE_URL" -Fc --no-owner \
+            -f "backup/dumps/habitator-$(date -u +%F).dump"
+
+      - name: Prune to newest 60
+        run: |
+          cd backup/dumps
+          ls -1 *.dump 2>/dev/null | sort | head -n -60 | xargs -r rm --
+
+      - name: Commit and push
+        run: |
+          cd backup
+          git config user.name "Habitator Backup"
+          git config user.email "backup@habitator.app"
+          git add -A
+          git diff --cached --quiet && { echo "No changes."; exit 0; }
+          git commit -m "backup $(date -u +%F)"
+          git push

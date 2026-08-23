@@ -1,0 +1,113 @@
+# The build lane: woken by the app's repository_dispatch (lib/agent/dispatch.ts)
+# when the chat decides a request needs code. Runs aider against the
+# instructions, loops the build until green, guards the diff, pushes to main
+# (Railway auto-deploys), and reports back to the app. Protected path — the
+# coding agent may not edit this file.
+name: agent-build
+
+on:
+  repository_dispatch:
+    types: [agent-build]
+
+# One build at a time; a second chat request queues instead of racing the push.
+concurrency:
+  group: agent-build
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BUILD_ID: ${{ github.event.client_payload.build_id }}
+      # Full payload as JSON — written to files by a node one-liner rather than
+      # template-expanded into shell, so chat text can't inject commands.
+      PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+      APP_URL: ${{ secrets.APP_URL }}
+      AGENT_CALLBACK_SECRET: ${{ secrets.AGENT_CALLBACK_SECRET }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      AGENT_CODER_MODEL: ${{ vars.AGENT_CODER_MODEL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Report running
+        continue-on-error: true
+        run: |
+          jq -n --argjson id "${BUILD_ID:-0}" '{buildId: $id, status: "running"}' \
+            | curl -fsS -X POST "$APP_URL/api/agent/callback" \
+                -H 'content-type: application/json' \
+                -H "x-agent-secret: $AGENT_CALLBACK_SECRET" \
+                -d @-
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install aider
+        run: pip install --quiet aider-chat
+
+      - name: Write payload files
+        run: |
+          mkdir -p .agent
+          node -e '
+            const fs = require("node:fs");
+            const p = JSON.parse(process.env.PAYLOAD || "{}");
+            fs.writeFileSync(".agent/instructions.txt", String(p.instructions || ""));
+            fs.writeFileSync(".agent/memory.txt", String(p.memory || ""));
+            fs.writeFileSync(".agent/context.txt", String(p.context || ""));
+          '
+
+      - name: Run coding agent (aider + build loop)
+        run: bash scripts/agent-run.sh
+
+      - name: Guard the diff
+        run: node scripts/agent-guard.mjs
+
+      - name: Push to main
+        id: push
+        run: |
+          # Summary/sha BEFORE the push moves origin/main under us.
+          {
+            echo "summary<<EOF"
+            git log origin/main..HEAD --pretty=%s | head -5
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # If main moved while we built (a human push), replay on top of it.
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Report success
+        run: |
+          jq -n \
+            --argjson id "${BUILD_ID:-0}" \
+            --arg summary "${{ steps.push.outputs.summary }}" \
+            --arg sha "${{ steps.push.outputs.sha }}" \
+            '{buildId: $id, status: "success", summary: ($summary | gsub("\n"; "; ")), commitSha: $sha}' \
+            | curl -fsS -X POST "$APP_URL/api/agent/callback" \
+                -H 'content-type: application/json' \
+                -H "x-agent-secret: $AGENT_CALLBACK_SECRET" \
+                -d @-
+
+      - name: Report failure
+        if: failure()
+        run: |
+          TAIL="$(tail -c 1500 build.log 2>/dev/null || echo 'The coding run failed before producing a build log.')"
+          jq -n \
+            --argjson id "${BUILD_ID:-0}" \
+            --arg err "$TAIL" \
+            '{buildId: $id, status: "failed", error: $err}' \
+            | curl -fsS -X POST "$APP_URL/api/agent/callback" \
+                -H 'content-type: application/json' \
+                -H "x-agent-secret: $AGENT_CALLBACK_SECRET" \
+                -d @-

@@ -34,3 +34,8 @@ yarn-error.log*
 # Remove this line if you intentionally want it in the repo.
 Routine.xlsx
 .playwright-mcp/
+
+# Build-lane runner scratch (written on the Actions runner)
+.agent/
+.aider*
+build.log

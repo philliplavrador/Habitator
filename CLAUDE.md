@@ -71,17 +71,18 @@ gates every route (verifies the session **signature** at the edge — it does no
 decode the uid, so handlers/pages resolve it themselves). Domains: habits,
 fasts, pushups, pullups, japanese/anki.
 
-**UI framing — everything except fasting is "just a custom habit."** Only two
-domains are distinct enough to be top-level destinations: plain habits (the
-Today screen) and fasting (its own tab). Pushups, pullups, and japanese/anki
-keep their own data models and full screens, but in the UI they are presented as
-custom habits, **not** separate destinations:
-- They are **not** tabs in `BottomNav` (only Today / Insights / Fasting are).
-- Their Today-screen summary widgets (`RepProgramSummary`, `AnkiSummary`) flow
-  **inline within the habit list** in `TodayClient` (passed down as the
-  `widgets` prop from `app/page.tsx`), not pinned as a separate section above it.
-- Their full screens (`/pushups`, `/pullups`, `/japanese`) still exist and are
-  reached via each widget's "Open →" link (or the direct route).
+**UI framing — the app is chat-first and self-modifying.** Home (`/`) is an
+LLM chatbox (`components/chat/ChatScreen.tsx`), the app's ONE fixed piece of
+UI. It answers questions about the owner's data, logs things, and — via a
+GitHub Actions coding agent — rewrites the app itself on request (spec:
+`docs/superpowers/specs/2026-08-23-chat-first-self-modifying-app-design.md`,
+agent brief: `AGENT.md`, chat/build plumbing: `lib/agent/`). There is no bottom
+nav. All legacy screens still exist and work, just unlinked from home: the old
+Today screen at `/today`, plus `/insights`, `/fasts`, `/pushups`, `/pullups`,
+`/japanese`, `/habits/*`, `/rep-programs/*`, `/plank-programs/*`. Within those
+legacy screens the old framing holds — pushups/pullups/japanese present as
+custom habits inline on the Today list (`widgets` prop), with full screens
+reached via each widget's "Open →" link:
 
 **Custom habits are opt-in, not seeded.** Nothing domain-specific is created
 with an account. Adding a habit (`/habits/new`, `NewHabitFlow`) is three steps:
@@ -101,8 +102,9 @@ data**: built-ins via `DELETE /api/domains/[domain]`, user rep programs via
 
 When adding a new *coded-in* custom habit, add it to the library in
 `lib/domains.ts` (and, if it's a new domain, a `DomainKey` + its data-table
-mapping) — never a new bottom-nav tab. Reserve new tabs for genuinely non-habit
-domains (like fasting).
+mapping). There is no bottom nav anymore (`BottomNav` is unmounted); new
+surfaces get their own routes and are linked from wherever the owner asks —
+the chat is the front door.
 
 Layout:
 - `app/` — pages (server components open with `requirePageContext()`) and
