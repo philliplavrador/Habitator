@@ -58,6 +58,15 @@ user, and Railway auto-deploys `main` on push.
 - Dates in domain tables are TEXT `YYYY-MM-DD` owner-local days; timestamps
   are ISO TEXT. Keep that shape.
 
+## Know your own weak spot: file moves and deletes
+
+You reliably CREATE and EDIT files. You do NOT reliably move, rename, or
+delete them. If a task calls for relocating a file, write the content fresh at
+the correct path and leave the old file where it is (say so in the commit
+message — the owner cleans up strays). Never respond with narration or
+shell-command suggestions (`git status`, `ls`, …) instead of edits: every turn
+must produce concrete file edits or you are wasting your bounded run time.
+
 ## Definition of done
 
 `npm run build` passes and the requested change is complete — the screen

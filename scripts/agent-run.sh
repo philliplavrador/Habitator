@@ -47,8 +47,24 @@ AIDER_FLAGS=(
   --read components/CLAUDE.md
 )
 
+# Every aider call gets a hard per-invocation timeout: a weak model can loop
+# "let me check…" forever without emitting an edit (seen live for 25 minutes),
+# and failing fast turns that into a reported failure instead of a silent
+# 30-minute job-ceiling cancellation.
+AIDER_TIMEOUT="${AGENT_AIDER_TIMEOUT:-480}"
+
+run_aider() {
+  timeout --signal=TERM "$AIDER_TIMEOUT" aider "${AIDER_FLAGS[@]}" --message "$1" || {
+    RC=$?
+    if [ "$RC" -eq 124 ]; then
+      echo "aider timed out after ${AIDER_TIMEOUT}s (model likely looping without edits)" >&2
+    fi
+    return "$RC"
+  }
+}
+
 echo "── aider: initial implementation ──"
-aider "${AIDER_FLAGS[@]}" --message "$MSG"
+run_aider "$MSG"
 
 # aider edits package.json but not the lockfile; keep them in sync so the
 # build (and the next `npm ci`) doesn't fall over.
@@ -91,5 +107,5 @@ $(tail -c 6000 build.log)"
     exit 1
   fi
   echo "── aider: fix round $((ROUND + 1)) ──"
-  aider "${AIDER_FLAGS[@]}" --message "$PROBLEM"
+  run_aider "$PROBLEM"
 done

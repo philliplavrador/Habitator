@@ -100,7 +100,10 @@ jobs:
                 -d @-
 
       - name: Report failure
-        if: failure()
+        # cancelled() too: a job-ceiling timeout cancels the steps rather than
+        # failing them, and an unreported death leaves the chat saying
+        # "Building…" forever.
+        if: failure() || cancelled()
         run: |
           TAIL="$(tail -c 1500 build.log 2>/dev/null || echo 'The coding run failed before producing a build log.')"
           jq -n \
