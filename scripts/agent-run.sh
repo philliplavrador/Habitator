@@ -62,21 +62,34 @@ sync_lockfile() {
   fi
 }
 
+# Each round: guard first (catches junk paths / rule violations while the
+# model can still fix them), then the build. Either failure is fed back to
+# aider verbatim. The workflow re-runs the guard after this script as the
+# hard gate — this in-loop pass is the self-healing one.
 for ROUND in $(seq 0 "$MAX_FIX_ROUNDS"); do
   sync_lockfile
-  echo "── npm run build (round $ROUND) ──"
-  if npm run build >build.log 2>&1; then
-    echo "build: green"
-    exit 0
+  PROBLEM=""
+  echo "── guard (round $ROUND) ──"
+  if ! GUARD_OUT="$(node scripts/agent-guard.mjs 2>&1)"; then
+    echo "$GUARD_OUT"
+    PROBLEM="Your change violates the repo rules below. Fix it: move wrongly-placed files to their correct paths (git mv/rm — deleting a junk path is allowed), keep edits inside the allowed tree, and never touch protected paths.
+
+$GUARD_OUT"
+  else
+    echo "── npm run build (round $ROUND) ──"
+    if npm run build >build.log 2>&1; then
+      echo "build: green"
+      exit 0
+    fi
+    tail -c 2000 build.log
+    PROBLEM="The build failed. Fix ONLY these build errors — do not start new work:
+
+$(tail -c 6000 build.log)"
   fi
-  tail -c 2000 build.log
   if [ "$ROUND" -eq "$MAX_FIX_ROUNDS" ]; then
-    echo "build: still red after $MAX_FIX_ROUNDS fix rounds — giving up" >&2
+    echo "still failing after $MAX_FIX_ROUNDS fix rounds — giving up" >&2
     exit 1
   fi
   echo "── aider: fix round $((ROUND + 1)) ──"
-  ERRORS="$(tail -c 6000 build.log)"
-  aider "${AIDER_FLAGS[@]}" --message "The build failed. Fix ONLY these build errors — do not start new work:
-
-$ERRORS"
+  aider "${AIDER_FLAGS[@]}" --message "$PROBLEM"
 done
