@@ -7,12 +7,7 @@ import Button from '@/components/ui/Button';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [code, setCode] = useState('');
-  // The registration-code field only appears once the server says a new account
-  // needs it — so signing in stays a two-field form.
-  const [showCode, setShowCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -24,7 +19,7 @@ export default function LoginPage() {
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, code }),
+        body: JSON.stringify({ password }),
       });
       if (res.ok) {
         router.replace('/');
@@ -32,8 +27,7 @@ export default function LoginPage() {
         return;
       }
       const data = await res.json().catch(() => null);
-      if (data?.needsCode) setShowCode(true);
-      setError(data?.error ?? 'Incorrect username or password.');
+      setError(data?.error ?? 'Incorrect password.');
       setBusy(false);
     } catch {
       setError('Network error. Try again.');
@@ -53,42 +47,21 @@ export default function LoginPage() {
           Habitator
         </h1>
         <p className="mb-8 text-center text-sm text-text-muted">
-          Sign in, or pick a new username to create an account.
+          Enter your password to continue.
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <Field
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Username"
-            autoFocus
-            autoCapitalize="none"
-            autoCorrect="off"
-            autoComplete="username"
-          />
           <Field
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
+            autoFocus
             autoComplete="current-password"
-            error={showCode ? null : error}
+            error={error}
           />
-          {showCode && (
-            <Field
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="Registration code (new account)"
-              autoCapitalize="none"
-              autoCorrect="off"
-              autoComplete="off"
-              error={error}
-            />
-          )}
           <Button type="submit" size="lg" fullWidth loading={busy}>
-            {showCode ? 'Create account' : 'Enter'}
+            Enter
           </Button>
         </form>
       </div>

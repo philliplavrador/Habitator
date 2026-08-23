@@ -3,26 +3,55 @@ import {
   SESSION_COOKIE,
   SESSION_MAX_AGE,
   createSessionToken,
-  createUser,
-  findUserByUsername,
-  safeEqual,
+  findUserByPassword,
   sessionCookieOptions,
-  verifyPassword,
 } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
-const USERNAME_RE = /^[a-zA-Z0-9_.-]{1,32}$/;
 const MIN_PASSWORD = 4;
 
-// POST /api/login  { username, password, code? }
+// Password-only login is guessable in a way username+password isn't (there's
+// only one secret), so failed attempts are throttled per client IP: after
+// MAX_FAILURES misses inside the window, further attempts are refused until it
+// expires. In-memory and per-instance — enough friction for a single-owner app,
+// not a distributed rate limiter.
+const MAX_FAILURES = 8;
+const WINDOW_MS = 5 * 60_000;
+const failures = new Map<string, { count: number; until: number }>();
+
+function clientIp(req: NextRequest): string {
+  const fwd = req.headers.get('x-forwarded-for');
+  return fwd?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'local';
+}
+
+function isLockedOut(ip: string): boolean {
+  const rec = failures.get(ip);
+  if (!rec) return false;
+  if (Date.now() > rec.until) {
+    failures.delete(ip);
+    return false;
+  }
+  return rec.count >= MAX_FAILURES;
+}
+
+function recordFailure(ip: string) {
+  const now = Date.now();
+  const rec = failures.get(ip);
+  if (!rec || now > rec.until) {
+    failures.set(ip, { count: 1, until: now + WINDOW_MS });
+  } else {
+    rec.count += 1;
+  }
+}
+
+// POST /api/login  { password }
 //
-// One box for both signing in and signing up:
-//   • Existing username → the password must match.
-//   • New username      → allowed only when `code` matches REGISTRATION_CODE
-//     (the shared invite secret). Then the account is created and logged in.
-// On success an httpOnly signed-session cookie is set (valid ~1 year, so the
-// login sticks on the phone).
+// This is a single-owner app, so there is no username: the password alone
+// identifies the account (findUserByPassword scrypt-checks it against each
+// user). On success an httpOnly signed-session cookie is set (valid ~1 year, so
+// the login sticks on the phone). Account creation is not exposed here — the
+// owner's account already exists.
 export async function POST(req: NextRequest) {
   if (!process.env.SESSION_SECRET) {
     return NextResponse.json(
@@ -31,24 +60,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let username = '';
+  const ip = clientIp(req);
+  if (isLockedOut(ip)) {
+    return NextResponse.json(
+      { error: 'Too many attempts. Wait a few minutes and try again.' },
+      { status: 429 }
+    );
+  }
+
   let password = '';
-  let code = '';
   try {
     const body = await req.json();
-    username = typeof body?.username === 'string' ? body.username.trim() : '';
     password = typeof body?.password === 'string' ? body.password : '';
-    code = typeof body?.code === 'string' ? body.code : '';
   } catch {
     // fall through to the validation error below
   }
 
-  if (!USERNAME_RE.test(username)) {
-    return NextResponse.json(
-      { error: 'Username must be 1–32 letters, numbers, or . _ -' },
-      { status: 400 }
-    );
-  }
   if (password.length < MIN_PASSWORD) {
     return NextResponse.json(
       { error: `Password must be at least ${MIN_PASSWORD} characters.` },
@@ -56,51 +83,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const existing = await findUserByUsername(username);
-
-  let userId: number;
-  if (existing) {
-    // Sign in.
-    if (!verifyPassword(password, existing.password_hash)) {
-      return NextResponse.json(
-        { error: 'Incorrect username or password.' },
-        { status: 401 }
-      );
-    }
-    userId = existing.id;
-  } else {
-    // Sign up — gated by the shared registration code.
-    const expectedCode = process.env.REGISTRATION_CODE;
-    if (!expectedCode) {
-      return NextResponse.json(
-        { error: 'Sign-ups are disabled. Ask the owner to create your account.' },
-        { status: 403 }
-      );
-    }
-    if (!code || !safeEqual(code, expectedCode)) {
-      return NextResponse.json(
-        {
-          error:
-            'That account doesn’t exist. To create it, enter the registration code.',
-          needsCode: true,
-        },
-        { status: 403 }
-      );
-    }
-    try {
-      const created = await createUser(username, password);
-      userId = created.id;
-    } catch {
-      // Almost certainly a race that lost the unique-username insert.
-      return NextResponse.json(
-        { error: 'That username is taken.' },
-        { status: 409 }
-      );
-    }
+  const user = await findUserByPassword(password);
+  if (!user) {
+    recordFailure(ip);
+    return NextResponse.json({ error: 'Incorrect password.' }, { status: 401 });
   }
+  failures.delete(ip);
 
-  const token = await createSessionToken(userId);
-  const res = NextResponse.json({ ok: true, username });
+  const token = await createSessionToken(user.id);
+  const res = NextResponse.json({ ok: true, username: user.username });
   res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(SESSION_MAX_AGE));
   return res;
 }

@@ -52,11 +52,10 @@ Minimal `.env.local`:
 SESSION_SECRET=devsecret123
 DATABASE_URL=postgres://postgres:devpass@localhost:55432/habitator
 PGSSL=disable
-REGISTRATION_CODE=letmein
 ```
 
-Open <http://localhost:3000> → you'll be redirected to `/login`. Pick a username +
-password (the first time you'll also need the `REGISTRATION_CODE`) and you're in.
+Open <http://localhost:3000> → you'll be redirected to `/login`. It's a
+single-owner app, so there's no username: type the account password and you're in.
 The schema is created automatically on first query.
 
 ### Scripts
@@ -79,7 +78,6 @@ Regenerate the PWA icons (white check on the accent) with
 | ------------------- | -------- | ------------------------------------------------------------------------------ |
 | `DATABASE_URL`      | yes      | Postgres connection string. On Railway: `${{Postgres.DATABASE_URL}}`.          |
 | `SESSION_SECRET`    | yes      | Long random string; the HMAC key that signs the session cookie.                |
-| `REGISTRATION_CODE` | rec.     | Shared code required to create a **new** account. Unset ⇒ sign-ups disabled.   |
 | `PGSSL`             | no       | `disable` / `require`; auto by default (off for localhost + Railway internal). |
 | `DATABASE_PATH`     | migration | Path to the OLD SQLite file to import once on first boot (see Deploy).         |
 | `DATA_DIR`          | prod     | Base dir for app files; videos go in `<DATA_DIR>/uploads/`. Defaults near `DATABASE_PATH`. |
@@ -113,7 +111,6 @@ into Postgres under the **`Fifi`** account. Do it in this order so nothing is lo
    - `DATABASE_URL=${{Postgres.DATABASE_URL}}`  ← reference the plugin
    - `DATABASE_PATH=/data/habitator.db`  ← the old file, so it gets imported
    - `SESSION_SECRET=<long random string>` (keep the existing one)
-   - `REGISTRATION_CODE=<a code you choose>` — needed to create new accounts
    - `TZ=<your timezone>` (e.g. `America/New_York`)
    - (While `DATABASE_PATH=/data/habitator.db` is set, rep-program videos already
      land in `/data/uploads/`. If you later unset `DATABASE_PATH`, set
@@ -136,10 +133,9 @@ into Postgres under the **`Fifi`** account. Do it in this order so nothing is lo
 
 ### Fresh deployment (no existing data)
 
-Skip the SQLite steps: add the Postgres plugin, set `DATABASE_URL`,
-`SESSION_SECRET`, and `REGISTRATION_CODE`, and deploy. A `Fifi` account is still
-seeded (override its password with `SEED_FIFI_PASSWORD`), or just register your own
-username with the registration code.
+Skip the SQLite steps: add the Postgres plugin, set `DATABASE_URL` and
+`SESSION_SECRET`, and deploy. A `Fifi` account is still seeded (override its
+password with `SEED_FIFI_PASSWORD`) — that password is the login.
 
 ### Custom subdomain
 
@@ -177,7 +173,7 @@ app/
   layout.tsx             # shell + PWA meta
   template.tsx           # mounts <TimezoneSync>
   page.tsx               # Today screen
-  login/page.tsx         # username + password (+ registration code)
+  login/page.tsx         # password only (no username — single-owner app)
   habits/new, [id], [id]/edit
   fasts/, pushups/, pullups/, japanese/, insights/   # per-domain screens
   api/login, logout, habits, entries, fasts, pushups, pullups, anki, export

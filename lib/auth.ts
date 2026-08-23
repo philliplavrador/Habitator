@@ -5,7 +5,7 @@
 import crypto from 'node:crypto';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { one } from './db';
+import { many, one } from './db';
 import { signSession, verifySession } from './session';
 
 export const SESSION_COOKIE = 'session';
@@ -117,6 +117,24 @@ export async function createUser(
     [username, hashPassword(password), new Date().toISOString()]
   );
   return row!;
+}
+
+/**
+ * Password-only sign-in: find the user whose password matches.
+ *
+ * This app has no username field anymore — the password alone identifies the
+ * account. We scrypt-verify against every user (there are a handful) in a
+ * stable id order and return the first match, so behaviour is deterministic if
+ * two accounts ever shared a password. Returns null when nothing matches.
+ */
+export async function findUserByPassword(
+  password: string
+): Promise<UserRow | undefined> {
+  const users = await many<UserRow>('SELECT * FROM users ORDER BY id');
+  for (const u of users) {
+    if (verifyPassword(password, u.password_hash)) return u;
+  }
+  return undefined;
 }
 
 // ── Current user (request-scoped) ───────────────────────────────────
