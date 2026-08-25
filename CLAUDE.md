@@ -6,17 +6,19 @@ Default to the most concise output that answers the question. Lead with the
 answer; skip preamble, option surveys, and restating the task. Only expand when
 the user explicitly asks for more detail.
 
-## Auto-deploy verified changes
+## Deploying — ask first, every time
 
 Habitator's live server runs on **Railway, which auto-deploys on every push to
 `main`** (Nixpacks, no Dockerfile). So "deploy" / "push to the live server" just
 means: commit and push to `origin/main`.
 
-**Rule:** After making a change, verify it actually works — and if it does,
-push it to the live server automatically, without waiting to be asked each time.
-This is standing authorization to deploy; don't re-ask per change.
+**Rule:** Never push on your own initiative. After a change is verified, **ask
+with the `AskUserQuestion` tool whether to push** — one question, options along
+the lines of "Push to live" / "Don't push yet" — and push only if he picks yes.
+There is no standing authorization to deploy; ask per change, every change.
+(Committing locally without pushing is fine and doesn't deploy anything.)
 
-A change "works" when, in order:
+A change is ready to be *offered* for deploy when, in order:
 
 1. `npm run build` passes (types + compile), and
 2. the changed behavior is exercised end-to-end and observed to work — e.g. run
@@ -27,12 +29,17 @@ Then, only if both pass:
 
 3. Commit with a clear message, ending with the trailer
    `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
-4. Push to `origin/main` (this is what triggers the Railway deploy — pushing to
-   any other branch does **not** deploy). Report the deployed commit afterward.
+4. **Ask** (`AskUserQuestion`) whether to push. Put what's being deployed into
+   the question — the commit subject and what changed — since that question is
+   the only text he reads.
+5. If he says yes: push to `origin/main` (this is what triggers the Railway
+   deploy — pushing to any other branch does **not** deploy), then report the
+   deployed commit in the next question. If he says no: stop, leave the commit
+   local, and say so.
 
-If verification fails, **do not push** — fix it or report the failure. Push a
-change only when it's a complete, working unit, not mid-way through multi-step
-work.
+If verification fails, **don't even offer the push** — fix it or report the
+failure. Only offer a push for a complete, working unit, not mid-way through
+multi-step work.
 
 ### Guardrails (never skip)
 
