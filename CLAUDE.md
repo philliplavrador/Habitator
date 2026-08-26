@@ -20,12 +20,14 @@ There is no standing authorization to deploy; ask per change, every change.
 
 A change is ready to be *offered* for deploy when, in order:
 
-1. `npm run build` passes (types + compile), and
-2. the changed behavior is exercised end-to-end and observed to work — e.g. run
+1. `npm run build` passes (types + compile),
+2. **if it touched the UI**, `npm run test:e2e` passes (see **UI changes** below),
+   and
+3. the changed behavior is exercised end-to-end and observed to work — e.g. run
    the dev server and drive the affected flow / API, not just tests (the
    `/verify` skill covers this).
 
-Then, only if both pass:
+Then, only if all of those pass:
 
 3. Commit with a clear message, ending with the trailer
    `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
@@ -70,6 +72,45 @@ store" or "could not read Username", the gh token has likely expired — re-run
 `gh auth setup-git`. As a last resort, push via the GitHub MCP (`push_files` to
 `philliplavrador/Habitator`, branch `main`) and `git reset --hard origin/main`
 to realign local.
+
+## UI changes — prove it with Playwright
+
+Any change under `components/` or to an `app/**/page.tsx` must pass the UI
+tests before it's offered for deploy:
+
+```
+docker start habitator-pg     # the suite needs the local Postgres
+npm run test:e2e              # next build, then the suite on its own :3210
+npm run test:e2e:report       # HTML report — every screen's screenshot is in it
+```
+
+Layout: `playwright.config.ts` + `tests/e2e/` (details and gotchas in
+**`tests/CLAUDE.md`**). Chromium only, two viewports — `phone` (390×844, the one
+that matters) and `desktop` (1280×900, to catch the layout breaking outside the
+448px column). It drives a **production** server, because `next dev` under
+parallel workers serves pages before their CSS is ready and the resulting blank
+screen is indistinguishable from a real regression. The run signs in as a
+throwaway `e2e` user by minting a session cookie from `SESSION_SECRET`, so it
+never touches the owner's data and never needs the owner's password.
+
+The rules:
+
+- **A new or changed surface ships with its test in the same commit.** A screen,
+  a drawer, a menu, a sheet — if a person can open it, there's a test that opens
+  it. `tests/e2e/ui-health.spec.ts` has a `ROUTES` list; a new route goes in it.
+- **Never loosen an assertion to get green.** These tests fail because the UI
+  broke, not because the test is fussy. Change a test only when the *intended*
+  design changed — and say so in the commit message.
+- **`ui-health.spec.ts` is the "does it look right" bar**, and it's deliberately
+  not a pixel diff (this app rewrites its own UI; a screenshot baseline would be
+  stale by the next build). It asserts the things that actually make a phone
+  screen look broken: the page renders with no console error, nothing scrolls
+  sideways, no control sits outside the app column, and every control is at
+  least 28px — plus a screenshot of each screen attached to the report, so the
+  report doubles as a contact sheet to flick through.
+- **Run the whole suite, not just your file.** The header, the drawer, and the
+  legacy screens share components; a change to `components/ui/` moves all of
+  them.
 
 ## Architecture / where things live
 

@@ -39,3 +39,10 @@ Routine.xlsx
 .agent/
 .aider*
 build.log
+
+# Playwright UI tests — minted session, HTML report, failure artifacts
+/tests/e2e/.auth/
+/tests/e2e/.report/
+/tests/e2e/.results/
+/test-results/
+/playwright-report/

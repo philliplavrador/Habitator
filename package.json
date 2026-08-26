@@ -9,7 +9,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:e2e": "next build && playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report tests/e2e/.report",
+    "test:e2e:rerun": "playwright test"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
@@ -23,6 +27,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/better-sqlite3": "^7.6.12",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20.14.0",

@@ -25,7 +25,6 @@ import { listPlankProgramStates, listPlankPrograms } from '@/lib/plankPrograms';
 import { getAnkiState } from '@/lib/anki';
 import { listUserDomains } from '@/lib/domains';
 import { requirePageContext } from '@/lib/pageContext';
-import { getUsername } from '@/lib/auth';
 import {
   MAX_FUTURE_DAYS,
   addDays,
@@ -72,7 +71,6 @@ export default async function TodayPage({
     userPlankStates,
     futureRepPrograms,
     futurePlankPrograms,
-    username,
   ] =
     await Promise.all([
       statusMapForDate(userId, selected),
@@ -96,7 +94,6 @@ export default async function TodayPage({
       // that hasn't happened. The raw rows skip every getState computation.
       isFuture ? listRepPrograms(userId) : Promise.resolve([]),
       isFuture ? listPlankPrograms(userId) : Promise.resolve([]),
-      getUsername(userId),
     ]);
 
   // A rolling monthly habit stays due until it's actually settled, so — alone
@@ -359,7 +356,7 @@ export default async function TodayPage({
             Habitator
           </h1>
           <div className="absolute inset-y-0 right-0 flex items-center">
-            <AccountMenu username={username ?? ''} />
+            <AccountMenu />
           </div>
         </div>
         <DateNav date={selected} prevDate={prevDate} nextDate={nextDate} today={today} />

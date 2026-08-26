@@ -68,7 +68,16 @@ export default function RootLayout({
       <body>
         <Providers>
           <TimezoneSync />
-          <div className="safe-top mx-auto w-full max-w-md px-4">{children}</div>
+          {/* The app's one column. `data-testid` is load-bearing for the UI
+              tests: they measure panels against this box, not the raw
+              viewport, so the same assertions hold on a phone and a desktop
+              window. */}
+          <div
+            data-testid="app-shell"
+            className="safe-top mx-auto w-full max-w-md px-4"
+          >
+            {children}
+          </div>
         </Providers>
       </body>
     </html>

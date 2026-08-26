@@ -7,7 +7,6 @@ import BarBreakdown from '@/components/charts/BarBreakdown';
 import { chart } from '@/components/charts/theme';
 import { listFasts } from '@/lib/fasts';
 import { requirePageContext } from '@/lib/pageContext';
-import { getUsername } from '@/lib/auth';
 import { computeFastStats } from '@/lib/fastStats';
 import {
   fastDurationSeries,
@@ -21,10 +20,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function FastsPage() {
   const { userId, tz, today } = await requirePageContext();
-  const [fasts, username] = await Promise.all([
-    listFasts(userId),
-    getUsername(userId),
-  ]);
+  const fasts = await listFasts(userId);
   // listFasts orders the (at most one, per the uniq_fast_active index) in-progress
   // fast first — `ORDER BY (end_at IS NULL) DESC, …` — so the active fast, if any,
   // is fasts[0]. This is exactly getActiveFast's result (WHERE end_at IS NULL
@@ -48,7 +44,7 @@ export default async function FastsPage() {
             Fasting
           </h1>
           <div className="absolute inset-y-0 right-0 flex items-center">
-            <AccountMenu username={username ?? ''} />
+            <AccountMenu />
           </div>
         </div>
       </header>

@@ -1,6 +1,5 @@
 import ChatScreen from '@/components/chat/ChatScreen';
 import { requirePageContext } from '@/lib/pageContext';
-import { getUsername } from '@/lib/auth';
 import { listChats } from '@/lib/agent/store';
 
 export const runtime = 'nodejs';
@@ -14,13 +13,9 @@ export const dynamic = 'force-dynamic';
  */
 export default async function ChatPage() {
   const { userId } = await requirePageContext();
-  const [username, chats] = await Promise.all([
-    getUsername(userId),
-    listChats(userId),
-  ]);
+  const chats = await listChats(userId);
   return (
     <ChatScreen
-      username={username ?? ''}
       initialChats={chats.map(({ id, title, created_at }) => ({ id, title, created_at }))}
     />
   );

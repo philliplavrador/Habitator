@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { m } from 'framer-motion';
-import Link from 'next/link';
-import AccountMenu from '@/components/AccountMenu';
+import Drawer from '@/components/ui/Drawer';
+import Menu from '@/components/ui/Menu';
 import Sheet from '@/components/ui/Sheet';
 import SegmentedControl from '@/components/ui/SegmentedControl';
 import {
@@ -46,7 +46,6 @@ interface Message {
 }
 
 interface Props {
-  username: string;
   initialChats: ChatListItem[];
 }
 
@@ -137,7 +136,7 @@ async function getJson<T>(url: string): Promise<T> {
   return res.json();
 }
 
-export default function ChatScreen({ username, initialChats }: Props) {
+export default function ChatScreen({ initialChats }: Props) {
   const [chats, setChats] = useState<ChatListItem[]>(initialChats);
   const [chatId, setChatId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -339,36 +338,40 @@ export default function ChatScreen({ username, initialChats }: Props) {
     <div className="flex h-dvh flex-col pb-2">
       {/* Header */}
       <header className="flex items-center justify-between py-3">
+        {/* Left: the chat list, in a drawer that slides in from the left —
+            "New chat" lives inside it rather than as its own header button, so
+            everything about *which* conversation you're in is in one place. */}
         <button
           type="button"
           onClick={() => setHistoryOpen(true)}
           aria-label="Chat history"
+          data-testid="history-button"
           className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-text-secondary active:bg-surface2"
         >
           <HistoryIcon />
         </button>
         <h1 className="font-display text-lg font-bold">Habitator</h1>
-        <div className="flex items-center gap-2">
-          {/* The one route link on the home screen. The chat is still the front
-              door (no bottom nav), but the day's tasks are a place you go back
-              to constantly — worth a tap rather than a typed URL. */}
-          <Link
-            href="/tasks"
-            aria-label="Tasks"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-text-secondary active:bg-surface2"
-          >
-            <TasksIcon />
-          </Link>
-          <button
-            type="button"
-            onClick={newChat}
-            aria-label="New chat"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-text-secondary active:bg-surface2"
-          >
-            <PlusIcon />
-          </button>
-          <AccountMenu username={username} />
-        </div>
+        {/* Right: where you can go. The chat is still the front door (no bottom
+            nav), so the app's handful of destinations hang off one popup. */}
+        <Menu
+          label="Go to"
+          testId="nav-menu"
+          icon={<GridIcon />}
+          items={[
+            {
+              href: '/',
+              label: 'Chat',
+              hint: 'Ask, log, or rebuild',
+              icon: <ChatIcon />,
+            },
+            {
+              href: '/tasks',
+              label: 'Tasks',
+              hint: "Today's to-do board",
+              icon: <TasksIcon />,
+            },
+          ]}
+        />
       </header>
 
       {/* Messages */}
@@ -635,8 +638,25 @@ export default function ChatScreen({ username, initialChats }: Props) {
         </p>
       </Sheet>
 
-      {/* History drawer */}
-      <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title="Chats">
+      {/* History drawer — slides in from the left, ChatGPT-style */}
+      <Drawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title="Chats"
+        testId="history-drawer"
+      >
+        <button
+          type="button"
+          onClick={newChat}
+          data-testid="new-chat"
+          className="flex w-full items-center gap-2.5 rounded-btn px-2 py-2.5 text-left text-sm font-semibold active:bg-surface2"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-text-secondary">
+            <PlusIcon />
+          </span>
+          New chat
+        </button>
+        <div className="my-2 h-px bg-border" />
         {chats.length === 0 ? (
           <p className="py-4 text-center text-sm text-text-secondary">
             No chats yet.
@@ -648,7 +668,7 @@ export default function ChatScreen({ username, initialChats }: Props) {
                 <button
                   type="button"
                   onClick={() => void openChat(c.id)}
-                  className={`w-full truncate rounded-btn px-3 py-2.5 text-left text-sm active:bg-surface2 ${
+                  className={`w-full truncate rounded-btn px-2 py-2.5 text-left text-sm active:bg-surface2 ${
                     c.id === chatId ? 'bg-surface2' : ''
                   }`}
                 >
@@ -658,7 +678,7 @@ export default function ChatScreen({ username, initialChats }: Props) {
             ))}
           </ul>
         )}
-      </Sheet>
+      </Drawer>
     </div>
   );
 }
@@ -701,11 +721,32 @@ function HistoryIcon() {
   );
 }
 
-/** Checklist glyph for the /tasks link in the header. */
+/** Checklist glyph for the Tasks entry in the header's "Go to" menu. */
 function TasksIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="m3 7 2 2 3.5-3.5M3 17l2 2 3.5-3.5M12 7h9M12 17h9" />
+    </svg>
+  );
+}
+
+/** The header's "Go to" trigger — a 2x2 grid reads as "places in this app". */
+function GridIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
+/** Speech bubble for the Chat entry in the "Go to" menu. */
+function ChatIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M20.5 11.7a8 8 0 0 1-8.6 8 8.7 8.7 0 0 1-3.6-.8L3.5 20.5l1.6-4.6a8 8 0 0 1-1.6-4.9 8 8 0 0 1 8.4-7.5 8 8 0 0 1 8.6 8.2Z" />
     </svg>
   );
 }
